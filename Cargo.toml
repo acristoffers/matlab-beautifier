@@ -1,0 +1,19 @@
+[package]
+name = "matlab-beautifier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.1.13", features = ["derive", "env"] }
+tree-sitter = "~0.20.10"
+tree-sitter-matlab = { git = "https://github.com/acristoffers/tree-sitter-matlab" }
+
+[build-dependencies]
+cc = "1.0"
+clap = { version = "4.1.13", features = ["derive", "env"] }
+clap_complete = "4.1.5"
+clap_mangen = "0.2.10"
+
+[[bin]]
+name = "matlab-beautifier"
+path = "src/main.rs"
