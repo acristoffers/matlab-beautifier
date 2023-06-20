@@ -124,24 +124,47 @@ fn format_block(state: &mut State, node: Node) {
         "try_statement",
         "while_statement",
     ];
-    let mut last_end = node.range().start_point.row;
     let mut cursor = node.walk();
     state.extra_indentation = 0;
     state.indent();
-    for child in node.named_children(&mut cursor) {
-        if child.range().start_point.row - last_end > 1 {
-            state.println("");
+    let named_children: Vec<Node> = node.named_children(&mut cursor).collect();
+    for (i, child) in named_children.iter().enumerate() {
+        let previous = if i > 0 {
+            named_children.get(i - 1)
+        } else {
+            None
+        };
+        let next = named_children.get(i + 1);
+        if let Some(previous) = previous {
+            // There are some empty lines between nodes. Preserve one of them.
+            if child.range().start_point.row - previous.range().end_point.row > 1 {
+                state.println("");
+            }
+            // Only assignments are allowed on the same line.
+            if child.kind() != "assignment" || previous.kind() != "assignment" {
+                state.println("");
+                state.indent();
+            }
         }
-        if child.range().start_point.row != last_end {
-            state.println("");
-            state.indent();
-        }
-        format_node(state, child);
+        format_node(state, *child);
         state.extra_indentation = 0;
+        // Some statements don't have ; at the end, like if, for, while, etc.
         if !statements.contains(&child.kind()) {
-            state.print(";");
+            if let Some(next) = next {
+                // If the current and next nodes are both assignments and on the same line, then
+                // separate with , instead of ;
+                if child.kind() == "assignment"
+                    && next.kind() == "assignment"
+                    && child.range().end_point.row == next.range().start_point.row
+                {
+                    state.print(", ");
+                } else {
+                    state.print(";");
+                }
+            } else {
+                state.print(";");
+            }
         }
-        last_end = child.range().end_point.row;
     }
     state.extra_indentation = 0;
     state.println("");
