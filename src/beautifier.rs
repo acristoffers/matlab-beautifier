@@ -93,6 +93,7 @@ fn format_node(state: &mut State, node: Node) {
         "comment" => format_comment(state, node),
         "comparison_operator" => format_boolean(state, node),
         "field_expression" => format_field(state, node),
+        "for_statement" => format_for(state, node),
         "function_call" => format_fncall(state, node),
         "global_operator" => format_global(state, node),
         "handle_operator" => format_unary(state, node),
@@ -119,6 +120,7 @@ fn format_node(state: &mut State, node: Node) {
 fn format_block(state: &mut State, node: Node) {
     let statements = vec![
         "comment",
+        "for_statement",
         "if_statement",
         "switch_statement",
         "try_statement",
@@ -658,5 +660,41 @@ fn format_if(state: &mut State, node: Node) {
         format_block(state, block);
         state.level -= 1;
     }
+    state.print("end");
+}
+
+fn format_for(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let parfor = node.child(0).unwrap().utf8_text(state.code).unwrap();
+    state.print(parfor);
+    state.print(" ");
+    let iterator = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "iterator")
+        .unwrap();
+    let block = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "block")
+        .unwrap();
+    let parfor_options = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "parfor_options");
+    if let Some(options) = parfor_options {
+        state.print("(");
+        state.print_node(iterator.named_child(0).unwrap());
+        state.print(" = ");
+        format_node(state, iterator.named_child(1).unwrap());
+        state.print(", ");
+        state.print_node(options.named_child(0).unwrap());
+        state.print(")");
+    } else {
+        state.print_node(iterator.named_child(0).unwrap());
+        state.print(" = ");
+        format_node(state, iterator.named_child(1).unwrap());
+    }
+    state.println("");
+    state.level += 1;
+    format_block(state, block);
+    state.level -= 1;
     state.print("end");
 }
