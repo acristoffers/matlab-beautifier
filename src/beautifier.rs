@@ -96,6 +96,7 @@ fn format_node(state: &mut State, node: Node) {
         "function_call" => format_fncall(state, node),
         "global_operator" => format_global(state, node),
         "handle_operator" => format_unary(state, node),
+        "if_statement" => format_if(state, node),
         "lambda" => format_lambda(state, node),
         "line_continuation" => format_line_continuation(state, node),
         "matrix" => format_matrix(state, node),
@@ -116,7 +117,13 @@ fn format_node(state: &mut State, node: Node) {
 }
 
 fn format_block(state: &mut State, node: Node) {
-    let statements = vec!["while_statement", "try_statement", "switch_statement"];
+    let statements = vec![
+        "comment",
+        "if_statement",
+        "switch_statement",
+        "try_statement",
+        "while_statement",
+    ];
     let mut last_end = node.range().start_point.row;
     let mut cursor = node.walk();
     state.extra_indentation = 0;
@@ -180,7 +187,13 @@ fn format_comment(state: &mut State, node: Node) {
         }
     } else {
         if state.col == state.level * 4 {
-            state.print("% ");
+            if text.starts_with("%#") {
+                state.print("%");
+            } else {
+                state.print("% ");
+            }
+        } else if text.starts_with("%#") {
+            state.print(" %");
         } else {
             state.print(" % ");
         }
@@ -576,5 +589,51 @@ fn format_switch(state: &mut State, node: Node) {
     }
     state.level -= 1;
     state.indent();
+    state.print("end");
+}
+
+fn format_if(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let condition = node.child_by_field_name("condition").unwrap();
+    let block = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "block")
+        .unwrap();
+    let elseif_clauses: Vec<Node> = node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "elseif_clause")
+        .collect();
+    let else_clause = node
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "else_clause");
+    state.print("if ");
+    format_node(state, condition);
+    state.println("");
+    state.level += 1;
+    format_block(state, block);
+    state.level -= 1;
+    for clause in elseif_clauses {
+        let condition = clause.child_by_field_name("condition").unwrap();
+        let block = clause
+            .children(&mut cursor)
+            .find(|c| c.kind() == "block")
+            .unwrap();
+        state.print("elseif ");
+        format_node(state, condition);
+        state.println("");
+        state.level += 1;
+        format_block(state, block);
+        state.level -= 1;
+    }
+    if let Some(else_clause) = else_clause {
+        let block = else_clause
+            .children(&mut cursor)
+            .find(|c| c.kind() == "block")
+            .unwrap();
+        state.println("else");
+        state.level += 1;
+        format_block(state, block);
+        state.level -= 1;
+    }
     state.print("end");
 }
