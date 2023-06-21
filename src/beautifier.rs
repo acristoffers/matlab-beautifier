@@ -660,6 +660,7 @@ fn format_if(state: &mut State, node: Node) {
         format_block(state, block);
         state.level -= 1;
     }
+    state.indent();
     state.print("end");
 }
 
@@ -696,5 +697,6 @@ fn format_for(state: &mut State, node: Node) {
     state.level += 1;
     format_block(state, block);
     state.level -= 1;
+    state.indent();
     state.print("end");
 }
