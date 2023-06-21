@@ -142,8 +142,13 @@ fn format_block(state: &mut State, node: Node) {
             if child.range().start_point.row - previous.range().end_point.row > 1 {
                 state.println("");
             }
-            // Only assignments are allowed on the same line.
-            if child.kind() != "assignment" || previous.kind() != "assignment" {
+            // Only assignments and comments are allowed on the same line.
+            // Except if the comment is in its own line.
+            if !(child.kind() == "assignment" && previous.kind() == "assignment")
+                && child.kind() != "comment"
+                || child.kind() == "comment"
+                    && child.range().start_point.row != previous.range().end_point.row
+            {
                 state.println("");
                 state.indent();
             }
@@ -532,6 +537,7 @@ fn format_while(state: &mut State, node: Node) {
     format_node(state, condition);
     state.println("");
     state.level += 1;
+    format_comment_on_same_line_or_next(state, node);
     format_block(state, body);
     state.level -= 1;
     state.indent();
@@ -557,6 +563,7 @@ fn format_try(state: &mut State, node: Node) {
         .unwrap();
     state.println("try");
     state.level += 1;
+    format_comment_on_same_line_or_next(state, node);
     format_block(state, body);
     state.level -= 1;
     state.indent();
@@ -567,6 +574,7 @@ fn format_try(state: &mut State, node: Node) {
     }
     state.println("");
     state.level += 1;
+    format_comment_on_same_line_or_next(state, catch);
     format_block(state, catch_body);
     state.level -= 1;
     state.indent();
@@ -584,6 +592,7 @@ fn format_switch(state: &mut State, node: Node) {
     format_node(state, condition);
     state.println("");
     state.level += 1;
+    format_comment_on_same_line_or_next(state, node);
     for case in cases {
         let condition = case.child_by_field_name("condition").unwrap();
         let block = case
@@ -595,6 +604,7 @@ fn format_switch(state: &mut State, node: Node) {
         format_node(state, condition);
         state.println("");
         state.level += 1;
+        format_comment_on_same_line_or_next(state, case);
         format_block(state, block);
         state.level -= 1;
     }
@@ -609,6 +619,7 @@ fn format_switch(state: &mut State, node: Node) {
         state.indent();
         state.println("otherwise");
         state.level += 1;
+        format_comment_on_same_line_or_next(state, otherwise);
         format_block(state, block);
         state.level -= 1;
     }
@@ -635,6 +646,7 @@ fn format_if(state: &mut State, node: Node) {
     format_node(state, condition);
     state.println("");
     state.level += 1;
+    format_comment_on_same_line_or_next(state, node);
     format_block(state, block);
     state.level -= 1;
     for clause in elseif_clauses {
@@ -647,6 +659,7 @@ fn format_if(state: &mut State, node: Node) {
         format_node(state, condition);
         state.println("");
         state.level += 1;
+        format_comment_on_same_line_or_next(state, clause);
         format_block(state, block);
         state.level -= 1;
     }
@@ -657,6 +670,7 @@ fn format_if(state: &mut State, node: Node) {
             .unwrap();
         state.println("else");
         state.level += 1;
+        format_comment_on_same_line_or_next(state, else_clause);
         format_block(state, block);
         state.level -= 1;
     }
@@ -695,8 +709,26 @@ fn format_for(state: &mut State, node: Node) {
     }
     state.println("");
     state.level += 1;
+    format_comment_on_same_line_or_next(state, node);
     format_block(state, block);
     state.level -= 1;
     state.indent();
     state.print("end");
+}
+
+fn format_comment_on_same_line_or_next(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let row = node.start_position().row;
+    let comment = node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == "comment")
+        .find(|c| c.start_position().row - row <= 1);
+    if let Some(comment) = comment {
+        let extra = state.extra_indentation;
+        state.extra_indentation = 0;
+        state.indent();
+        format_comment(state, comment);
+        state.println("");
+        state.extra_indentation = extra;
+    }
 }
