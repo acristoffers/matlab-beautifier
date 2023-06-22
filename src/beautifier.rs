@@ -90,6 +90,7 @@ fn format_node(state: &mut State, node: Node) {
         "block" => format_block(state, node),
         "boolean_operator" => format_boolean(state, node),
         "cell" => format_matrix(state, node),
+        "class_definition" => format_classdef(state, node),
         "command" => format_command(state, node),
         "comment" => format_comment(state, node),
         "comparison_operator" => format_boolean(state, node),
@@ -124,6 +125,7 @@ fn format_node(state: &mut State, node: Node) {
 fn format_block(state: &mut State, node: Node) {
     let statements = vec![
         "arguments_statement",
+        "class_definition",
         "comment",
         "for_statement",
         "function_definition",
@@ -149,11 +151,9 @@ fn format_block(state: &mut State, node: Node) {
                 state.println("");
             }
             // Only assignments and comments are allowed on the same line.
-            // Except if the comment is in its own line.
             if !(child.kind() == "assignment" && previous.kind() == "assignment")
                 && child.kind() != "comment"
-                || child.kind() == "comment"
-                    && child.range().start_point.row != previous.range().end_point.row
+                || child.range().start_point.row != previous.range().end_point.row
             {
                 state.println("");
                 state.indent();
@@ -210,15 +210,13 @@ fn format_comment(state: &mut State, node: Node) {
                 .split('\n')
                 .map(|l| l.trim().strip_prefix('%').unwrap().trim())
                 .collect();
-            let mut first = true;
-            for line in lines {
-                if !first {
+            for (i, line) in lines.iter().enumerate() {
+                if i != 0 {
                     state.println("");
                     state.indent();
                 }
                 state.print("% ");
                 state.print(line);
-                first = false;
             }
         }
     } else {
@@ -330,15 +328,13 @@ fn format_range(state: &mut State, node: Node) {
     let children = node
         .named_children(&mut cursor)
         .filter(|c| c.kind() != "line_continuation");
-    let mut first = true;
     let sparse = state.arguments.sparse_math;
     state.arguments.sparse_math = false;
-    for child in children {
-        if !first {
+    for (i, child) in children.enumerate() {
+        if i != 0 {
             state.print(":");
         }
         format_node(state, child);
-        first = false;
     }
     state.arguments.sparse_math = sparse;
 }
@@ -349,13 +345,11 @@ fn format_multioutput(state: &mut State, node: Node) {
         .named_children(&mut cursor)
         .filter(|c| c.kind() != "line_continuation");
     state.print("[");
-    let mut first = true;
-    for child in children {
-        if !first {
+    for (i, child) in children.enumerate() {
+        if i != 0 {
             state.print(",");
         }
         format_node(state, child);
-        first = false;
     }
     state.print("]");
 }
@@ -370,13 +364,11 @@ fn format_lambda(state: &mut State, node: Node) {
         let children = args
             .named_children(&mut cursor)
             .filter(|c| c.kind() != "line_continuation");
-        let mut first = true;
-        for arg in children {
-            if !first {
+        for (i, arg) in children.enumerate() {
+            if i != 0 {
                 state.print(", ");
             }
             state.print_node(arg);
-            first = false;
         }
     }
     state.print(") ");
@@ -432,30 +424,26 @@ fn format_arguments(state: &mut State, node: Node) {
 
 fn format_command(state: &mut State, node: Node) {
     let mut cursor = node.walk();
-    let mut first = true;
-    for child in node.children(&mut cursor) {
-        if !first {
+    for (i, child) in node.children(&mut cursor).enumerate() {
+        if i != 0 {
             state.print(" ");
         }
         format_node(state, child);
         if child.kind() == "command_name" {
             state.extra_indentation = state.col - 4 * state.level;
         }
-        first = false;
     }
     state.extra_indentation = 0;
 }
 
 fn format_field(state: &mut State, node: Node) {
     let mut cursor = node.walk();
-    let mut first = true;
     let children = node.named_children(&mut cursor).filter(|c| !c.is_extra());
-    for child in children {
-        if !first {
+    for (i, child) in children.enumerate() {
+        if i != 0 {
             state.print(".");
         }
         format_node(state, child);
-        first = false;
     }
 }
 
@@ -517,16 +505,14 @@ fn format_row(state: &mut State, node: Node) {
 
 fn format_global(state: &mut State, node: Node) {
     let mut cursor = node.walk();
-    let mut first = true;
     let children = node
         .children(&mut cursor)
         .filter(|c| c.kind() != "line_continuation");
-    for child in children {
-        if !first {
+    for (i, child) in children.enumerate() {
+        if i != 0 {
             state.print(" ");
         }
         state.print_node(child);
-        first = false;
     }
 }
 
@@ -779,6 +765,7 @@ fn format_function(state: &mut State, node: Node) {
     }
     format_block(state, block);
     state.level -= 1;
+    state.indent();
     state.print("end");
 }
 
@@ -866,6 +853,269 @@ fn format_dimensions(state: &mut State, node: Node) {
         state.print_node(child);
     }
     state.print(")");
+}
+
+fn format_classdef(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let attributes = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "attributes");
+    let name = node.child_by_field_name("name").unwrap();
+    let superclasses = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "superclasses");
+    let properties: Vec<Node> = node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == "properties")
+        .collect();
+    let methods: Vec<Node> = node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == "methods")
+        .collect();
+    let events: Vec<Node> = node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == "events")
+        .collect();
+    let enumerations: Vec<Node> = node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == "enumeration")
+        .collect();
+    state.print("classdef ");
+    if let Some(attributes) = attributes {
+        format_attributes(state, attributes);
+        state.print(" ");
+    }
+    state.print_node(name);
+    if let Some(superclasses) = superclasses {
+        state.print(" < ");
+        for (i, superclass) in superclasses.named_children(&mut cursor).enumerate() {
+            if i != 0 {
+                state.print(" & ");
+            }
+            format_property_name(state, superclass);
+        }
+    }
+    state.println("");
+    state.extra_indentation = 0;
+    state.level += 1;
+    for property in properties {
+        state.indent();
+        format_properties(state, property);
+        state.println("");
+    }
+    for enumeration in enumerations {
+        state.indent();
+        format_enum(state, enumeration);
+        state.println("");
+    }
+    for event in events {
+        state.indent();
+        format_events(state, event);
+        state.println("");
+    }
+    for method in methods {
+        state.indent();
+        format_method(state, method);
+        state.println("");
+    }
+    state.level -= 1;
+    state.print("end");
+}
+
+fn format_attributes(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    state.print("(");
+    let attributes = node
+        .children(&mut cursor)
+        .filter(|c| c.kind() == "attribute");
+    for (i, attr) in attributes.enumerate() {
+        if i != 0 {
+            state.print(", ");
+        }
+        format_attribute(state, attr);
+    }
+    state.print(")");
+}
+
+fn format_attribute(state: &mut State, node: Node) {
+    let identifier = node.named_child(0).unwrap();
+    let value = node.named_child(1);
+    state.print_node(identifier);
+    if let Some(value) = value {
+        state.print("=");
+        format_node(state, value);
+    }
+}
+
+fn format_properties(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let attributes = node
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "attributes");
+    let properties = node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "property");
+    state.print("properties");
+    if let Some(attributes) = attributes {
+        state.print(" ");
+        format_attributes(state, attributes);
+    }
+    state.println("");
+    state.level += 1;
+    for property in properties {
+        state.indent();
+        format_property(state, property);
+        state.println("");
+    }
+    state.level -= 1;
+    state.indent();
+    state.print("end")
+}
+
+fn format_enum(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let attributes = node
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "attributes");
+    let enums: Vec<Node> = node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "enum")
+        .collect();
+    state.print("enumeration");
+    if let Some(attributes) = attributes {
+        state.print(" ");
+        format_attributes(state, attributes);
+    }
+    state.println("");
+    state.level += 1;
+    for enumeration in enums {
+        state.indent();
+        let mut parens = false;
+        for (i, c) in enumeration.named_children(&mut cursor).enumerate() {
+            if i == 0 {
+                state.print_node(c);
+            } else if i == 1 {
+                parens = true;
+                state.print(" (");
+                format_node(state, c);
+            } else {
+                state.print(", ");
+                format_node(state, c);
+            }
+        }
+        if parens {
+            state.print(")");
+        }
+        state.println("");
+    }
+    state.level -= 1;
+    state.indent();
+    state.print("end");
+}
+
+fn format_events(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let attributes = node
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "attributes");
+    let identifiers = node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "identifier");
+    state.print("events");
+    if let Some(attributes) = attributes {
+        state.print(" ");
+        format_attributes(state, attributes);
+    }
+    state.println("");
+    state.level += 1;
+    for identifier in identifiers {
+        state.indent();
+        state.print_node(identifier);
+        state.println("");
+    }
+    state.level -= 1;
+    state.indent();
+    state.print("end");
+}
+
+fn format_method(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let attributes = node
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "attributes");
+    let definitions: Vec<Node> = node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "function_definition")
+        .collect();
+    let signatures: Vec<Node> = node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "function_signature")
+        .collect();
+    state.print("methods");
+    if let Some(attributes) = attributes {
+        state.print(" ");
+        format_attributes(state, attributes);
+    }
+    state.println("");
+    state.level += 1;
+    for signature in &signatures {
+        state.indent();
+        format_signature(state, *signature);
+        state.println("");
+    }
+    for (i, definition) in definitions.iter().enumerate() {
+        if i != 0 || !signatures.is_empty() {
+            state.println("");
+        }
+        state.indent();
+        format_function(state, *definition);
+        state.println("");
+    }
+    state.level -= 1;
+    state.indent();
+    state.print("end");
+}
+
+fn format_signature(state: &mut State, node: Node) {
+    let mut cursor = node.walk();
+    let output = node
+        .named_children(&mut cursor)
+        .find(|n| n.kind() == "function_output");
+    let get_set = node
+        .children(&mut cursor)
+        .filter(|n| !n.is_named())
+        .find(|n| match n.utf8_text(state.code) {
+            Ok("get") => true,
+            Ok("set") => true,
+            Ok(_) => false,
+            Err(_) => false,
+        });
+    let name = node.child_by_field_name("name").unwrap();
+    let arguments = node
+        .named_children(&mut cursor)
+        .find(|n| n.kind() == "function_arguments");
+    if let Some(output) = output {
+        format_node(state, output.child(0).unwrap());
+        state.print(" = ");
+    }
+    if let Some(get_set) = get_set {
+        state.print_node(get_set);
+        state.print(".");
+    }
+    state.print_node(name);
+    if let Some(arguments) = arguments {
+        state.print("(");
+        let children = arguments
+            .named_children(&mut cursor)
+            .filter(|c| c.kind() != "line_continuation");
+        for (i, arg) in children.enumerate() {
+            if i != 0 {
+                state.print(", ");
+            }
+            state.print_node(arg);
+        }
+        state.print(")");
+    }
 }
 
 fn format_comment_before_block(state: &mut State, node: Node) {
