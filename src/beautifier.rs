@@ -135,6 +135,9 @@ fn format_block(state: &mut State, node: Node) {
         "while_statement",
     ];
     let mut cursor = node.walk();
+    let original_indentation = state.level;
+    let indents = vec!["cvx_begin", "subject"];
+    let dedents = vec!["cvx_end"];
     state.extra_indentation = 0;
     state.indent();
     let named_children: Vec<Node> = node.named_children(&mut cursor).collect();
@@ -145,6 +148,12 @@ fn format_block(state: &mut State, node: Node) {
             None
         };
         let next = named_children.get(i + 1);
+        if child.kind() == "command" {
+            let command_name = child.named_child(0).unwrap().utf8_text(state.code).unwrap();
+            if dedents.contains(&command_name) {
+                state.level = original_indentation;
+            }
+        }
         if let Some(previous) = previous {
             // There are some empty lines between nodes. Preserve one of them.
             if child.range().start_point.row - previous.range().end_point.row > 1 {
@@ -161,6 +170,12 @@ fn format_block(state: &mut State, node: Node) {
         }
         format_node(state, *child);
         state.extra_indentation = 0;
+        if child.kind() == "command" {
+            let command_name = child.named_child(0).unwrap().utf8_text(state.code).unwrap();
+            if indents.contains(&command_name) {
+                state.level += 1;
+            }
+        }
         // Some statements don't have ; at the end, like if, for, while, etc.
         if !statements.contains(&child.kind()) {
             if let Some(next) = next {
@@ -180,6 +195,7 @@ fn format_block(state: &mut State, node: Node) {
         }
     }
     state.extra_indentation = 0;
+    state.level = original_indentation;
     state.println("");
 }
 

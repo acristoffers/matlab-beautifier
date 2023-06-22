@@ -23,8 +23,4 @@ pub struct Arguments {
     /// Prints spaces around math operators.
     #[arg(global = true, long = "sparse-math")]
     pub sparse_math: bool,
-
-    /// Indents cvx_begin, subject to and cvx_end
-    #[arg(global = true, long = "cvx")]
-    pub cvx: bool,
 }
