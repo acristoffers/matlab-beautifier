@@ -227,27 +227,38 @@ fn format_comment(state: &mut State, node: Node) {
                 .map(|l| l.trim().strip_prefix('%').unwrap().trim())
                 .collect();
             for (i, line) in lines.iter().enumerate() {
+                let line = line.trim();
                 if i != 0 {
                     state.println("");
                     state.indent();
                 }
-                state.print("% ");
+                state.print("%");
+                if !line.is_empty() {
+                    state.print(" ");
+                }
                 state.print(line);
             }
         }
     } else {
+        let line = text.strip_prefix('%').unwrap().trim();
         if state.col == state.level * 4 {
             if text.starts_with("%#") {
                 state.print("%");
             } else {
-                state.print("% ");
+                state.print("%");
+                if !line.is_empty() {
+                    state.print(" ");
+                }
             }
         } else if text.starts_with("%#") {
             state.print(" %");
         } else {
-            state.print(" % ");
+            state.print(" %");
+            if !line.is_empty() {
+                state.print(" ");
+            }
         }
-        state.print(text.strip_prefix('%').unwrap().trim());
+        state.print(line);
     }
 }
 
