@@ -1,3 +1,9 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
 use super::args::Arguments;
 use std::io::Read;
 use tree_sitter::Node;
@@ -285,6 +291,7 @@ fn format_assignment(state: &mut State, node: Node) {
 
 fn format_binary(state: &mut State, node: Node) {
     state.maybe_set_extra_indentation(state.col - 4 * state.level);
+    let add_ops = vec!["+", "-", ".+", ".-"];
     let mut line_cont = false;
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -293,7 +300,9 @@ fn format_binary(state: &mut State, node: Node) {
             format_node(state, child);
         } else {
             let operator = child.utf8_text(state.code).unwrap().trim();
-            if state.arguments.sparse_math {
+            if state.arguments.sparse_math
+                || state.arguments.sparse_add && add_ops.contains(&operator)
+            {
                 if !line_cont {
                     state.print(" ");
                 }

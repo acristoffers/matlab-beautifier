@@ -10,8 +10,8 @@ pub use clap::Parser;
 static LONG_ABOUT: &str = "
 matlab-beautifier formats and beautifies MATLAB(R) code.
 
-matlab-beautifier is a somewhat opinionated code beautifier.
-It allows a small level of control through arguments or a project-specific file.";
+This beautifier is quite opinionated and does not offer many options. It also
+loves to eat comments.";
 
 #[derive(Debug, Parser)]
 #[command(author, version, about = LONG_ABOUT)]
@@ -23,4 +23,8 @@ pub struct Arguments {
     /// Prints spaces around math operators.
     #[arg(global = true, long = "sparse-math")]
     pub sparse_math: bool,
+
+    /// Prints spaces around addition/subtraction operators only.
+    #[arg(global = true, long = "sparse-add")]
+    pub sparse_add: bool,
 }
