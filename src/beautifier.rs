@@ -5,11 +5,11 @@
  */
 
 use super::args::Arguments;
-use std::io::Read;
 use tree_sitter::Node;
 
 struct State<'a> {
-    arguments: Arguments,
+    formatted: String,
+    arguments: &'a mut Arguments,
     code: &'a [u8],
     col: usize,
     row: usize,
@@ -19,18 +19,20 @@ struct State<'a> {
 
 impl State<'_> {
     fn indent(&mut self) {
-        // println!("i: {}, e: {}", self.level, self.extra_indentation);
         for _ in 0..self.level {
-            print!("    ");
+            self.print("    ");
         }
         for _ in 0..self.extra_indentation {
-            print!(" ");
+            self.print(" ");
         }
-        self.col += 4 * self.level + self.extra_indentation;
     }
 
     fn print(&mut self, string: &str) {
-        print!("{}", string);
+        if self.arguments.inplace {
+            self.formatted += string;
+        } else {
+            print!("{}", string);
+        }
         self.col += string.len();
     }
 
@@ -39,7 +41,12 @@ impl State<'_> {
     }
 
     fn println(&mut self, string: &str) {
-        println!("{}", string);
+        if self.arguments.inplace {
+            self.formatted += string;
+            self.formatted += "\n";
+        } else {
+            println!("{}", string);
+        }
         self.col = 0;
         self.row += 1;
     }
@@ -51,17 +58,7 @@ impl State<'_> {
     }
 }
 
-pub fn beautify(arguments: Arguments) {
-    let mut code: String = "".into();
-
-    if let Some(file) = &arguments.file {
-        code = std::fs::read_to_string(file).expect("Could not read file.");
-    } else {
-        std::io::stdin()
-            .read_to_string(&mut code)
-            .expect("Error reading from stdin.");
-    }
-
+pub fn beautify(code: &str, arguments: &mut Arguments) -> Option<String> {
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(tree_sitter_matlab::language())
@@ -73,7 +70,7 @@ pub fn beautify(arguments: Arguments) {
 
     let root = tree.root_node();
     if root.has_error() {
-        panic!("Error in tree, file is not valid.");
+        return None;
     }
 
     let mut state = State {
@@ -83,9 +80,11 @@ pub fn beautify(arguments: Arguments) {
         row: 0,
         level: 0,
         extra_indentation: 0,
+        formatted: "".into(),
     };
 
     format_block(&mut state, root);
+    Some(state.formatted)
 }
 
 fn format_node(state: &mut State, node: Node) {

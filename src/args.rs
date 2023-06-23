@@ -16,9 +16,9 @@ loves to eat comments.";
 #[derive(Debug, Parser)]
 #[command(author, version, about = LONG_ABOUT)]
 pub struct Arguments {
-    /// File to beautify
+    /// File(s) to beautify. If more than one file is passed, inline is implied. If no file is given, reads from stdin.
     #[arg(global = true)]
-    pub file: Option<String>,
+    pub files: Vec<String>,
 
     /// Prints spaces around math operators.
     #[arg(global = true, long = "sparse-math")]
@@ -27,4 +27,8 @@ pub struct Arguments {
     /// Prints spaces around addition/subtraction operators only.
     #[arg(global = true, long = "sparse-add")]
     pub sparse_add: bool,
+
+    /// Whether files should be formatted inplace instead of printing to stdout.
+    #[arg(global = true, long = "inplace")]
+    pub inplace: bool,
 }
