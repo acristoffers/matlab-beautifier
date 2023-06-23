@@ -200,6 +200,11 @@ fn format_block(state: &mut State, node: Node) {
             }
         }
     }
+    if let Some(n) = node.next_named_sibling() {
+        if n.kind() == "comment" {
+            format_comment(state, n);
+        }
+    }
     state.extra_indentation = 0;
     state.level = original_indentation;
     state.println("");
