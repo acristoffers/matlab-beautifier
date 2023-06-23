@@ -146,7 +146,25 @@ fn format_block(state: &mut State, node: Node) {
     let dedents = vec!["cvx_end"];
     state.extra_indentation = 0;
     state.indent();
-    let named_children: Vec<Node> = node.named_children(&mut cursor).collect();
+    let mut named_children: Vec<Node> = node.named_children(&mut cursor).collect();
+    let mut prev_node = node;
+    while let Some(n) = prev_node.prev_named_sibling() {
+        prev_node = n;
+        if n.kind() == "comment" {
+            named_children.insert(0, n);
+        } else {
+            break;
+        }
+    }
+    let mut next_node = node;
+    while let Some(n) = next_node.next_named_sibling() {
+        next_node = n;
+        if n.kind() == "comment" {
+            named_children.push(n);
+        } else {
+            break;
+        }
+    }
     for (i, child) in named_children.iter().enumerate() {
         let previous = if i > 0 {
             named_children.get(i - 1)
@@ -198,11 +216,6 @@ fn format_block(state: &mut State, node: Node) {
             } else {
                 state.print(";");
             }
-        }
-    }
-    if let Some(n) = node.next_named_sibling() {
-        if n.kind() == "comment" {
-            format_comment(state, n);
         }
     }
     state.extra_indentation = 0;
@@ -568,7 +581,6 @@ fn format_while(state: &mut State, node: Node) {
     format_node(state, condition);
     state.println("");
     state.level += 1;
-    format_comment_before_block(state, node);
     format_block(state, body);
     state.level -= 1;
     state.indent();
@@ -594,7 +606,6 @@ fn format_try(state: &mut State, node: Node) {
         .unwrap();
     state.println("try");
     state.level += 1;
-    format_comment_before_block(state, node);
     format_block(state, body);
     state.level -= 1;
     state.indent();
@@ -605,7 +616,6 @@ fn format_try(state: &mut State, node: Node) {
     }
     state.println("");
     state.level += 1;
-    format_comment_before_block(state, catch);
     format_block(state, catch_body);
     state.level -= 1;
     state.indent();
@@ -623,7 +633,6 @@ fn format_switch(state: &mut State, node: Node) {
     format_node(state, condition);
     state.println("");
     state.level += 1;
-    format_comment_before_block(state, node);
     for case in cases {
         let condition = case.child_by_field_name("condition").unwrap();
         let block = case
@@ -635,7 +644,6 @@ fn format_switch(state: &mut State, node: Node) {
         format_node(state, condition);
         state.println("");
         state.level += 1;
-        format_comment_before_block(state, case);
         format_block(state, block);
         state.level -= 1;
     }
@@ -650,7 +658,6 @@ fn format_switch(state: &mut State, node: Node) {
         state.indent();
         state.println("otherwise");
         state.level += 1;
-        format_comment_before_block(state, otherwise);
         format_block(state, block);
         state.level -= 1;
     }
@@ -677,7 +684,6 @@ fn format_if(state: &mut State, node: Node) {
     format_node(state, condition);
     state.println("");
     state.level += 1;
-    format_comment_before_block(state, node);
     format_block(state, block);
     state.level -= 1;
     for clause in elseif_clauses {
@@ -690,7 +696,6 @@ fn format_if(state: &mut State, node: Node) {
         format_node(state, condition);
         state.println("");
         state.level += 1;
-        format_comment_before_block(state, clause);
         format_block(state, block);
         state.level -= 1;
     }
@@ -701,7 +706,6 @@ fn format_if(state: &mut State, node: Node) {
             .unwrap();
         state.println("else");
         state.level += 1;
-        format_comment_before_block(state, else_clause);
         format_block(state, block);
         state.level -= 1;
     }
@@ -740,7 +744,6 @@ fn format_for(state: &mut State, node: Node) {
     }
     state.println("");
     state.level += 1;
-    format_comment_before_block(state, node);
     format_block(state, block);
     state.level -= 1;
     state.indent();
@@ -798,7 +801,6 @@ fn format_function(state: &mut State, node: Node) {
     }
     state.println("");
     state.level += 1;
-    format_comment_before_block(state, node);
     for argument_statement in argument_statements {
         state.indent();
         format_node(state, argument_statement);
@@ -1157,25 +1159,4 @@ fn format_signature(state: &mut State, node: Node) {
         }
         state.print(")");
     }
-}
-
-fn format_comment_before_block(state: &mut State, node: Node) {
-    let mut cursor = node.walk();
-    let comments = node
-        .children(&mut cursor)
-        .take_while(|n| n.kind() != "block")
-        .filter(|n| n.kind() == "comment");
-    let extra = state.extra_indentation;
-    state.extra_indentation = 0;
-    let mut last_row = node.start_position().row;
-    for comment in comments {
-        if comment.start_position().row - last_row > 1 {
-            state.println("");
-        }
-        state.indent();
-        format_comment(state, comment);
-        state.println("");
-        last_row = comment.end_position().row;
-    }
-    state.extra_indentation = extra;
 }
