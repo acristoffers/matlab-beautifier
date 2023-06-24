@@ -7,14 +7,26 @@
 use clap_complete::{generate_to, shells};
 use std::env;
 use std::io::Error;
+use std::path::{Path, PathBuf};
 
 include!("src/args.rs");
+
+fn get_output_path() -> PathBuf {
+    //<root or manifest path>/target/<profile>/
+    let manifest_dir_string = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let build_type = env::var("PROFILE").unwrap();
+    Path::new(&manifest_dir_string)
+        .join("target")
+        .join(build_type)
+}
 
 fn main() -> Result<(), Error> {
     let outdir = match env::var_os("OUT_DIR") {
         None => return Ok(()),
         Some(outdir) => outdir,
     };
+
+    let release_dir = get_output_path();
 
     let mut cmd = Arguments::command();
     let bash_path = generate_to(
@@ -52,19 +64,66 @@ fn main() -> Result<(), Error> {
         outdir.clone(),      // We need to specify where to write to
     )?;
 
-    println!("cargo:warning=bash completion files are generated: {bash_path:?}");
-    println!("cargo:warning=fish completion files are generated: {fish_path:?}");
-    println!("cargo:warning=zsh completion files are generated: {zsh_path:?}");
-    println!("cargo:warning=power shell completion files are generated: {ps_path:?}");
-    println!("cargo:warning=elvish completion files are generated: {elvish_path:?}");
-
     let man = clap_mangen::Man::new(cmd);
-    let man_path = std::path::PathBuf::from(outdir).join("matlab-beautifier.1");
+    let man_path = std::path::PathBuf::from(&outdir)
+        .join("share")
+        .join("man")
+        .join("man1");
+    std::fs::create_dir_all(&man_path)?;
+    let man_path = man_path.join("matlab-beautifier.1");
     let mut buffer: Vec<u8> = Default::default();
     man.render(&mut buffer)?;
     std::fs::write(man_path.clone(), buffer)?;
 
-    println!("cargo:warning=man page generated: {man_path:?}");
+    let share = std::path::PathBuf::from(&release_dir).join("share");
+
+    fs_extra::remove_items(&[&share]).unwrap();
+    fs_extra::copy_items(
+        &[std::path::PathBuf::from(&outdir).join("share")],
+        std::path::PathBuf::from(&release_dir),
+        &fs_extra::dir::CopyOptions::new(),
+    )
+    .unwrap();
+
+    std::fs::create_dir_all(share.join("fish").join("completions"))?;
+    fs_extra::copy_items(
+        &[fish_path],
+        share.join("fish").join("completions"),
+        &fs_extra::dir::CopyOptions::new(),
+    )
+    .unwrap();
+
+    std::fs::create_dir_all(share.join("zsh").join("completions"))?;
+    fs_extra::copy_items(
+        &[zsh_path],
+        share.join("zsh").join("completions"),
+        &fs_extra::dir::CopyOptions::new(),
+    )
+    .unwrap();
+
+    std::fs::create_dir_all(share.join("bash").join("completions"))?;
+    fs_extra::copy_items(
+        &[bash_path],
+        share.join("bash").join("completions"),
+        &fs_extra::dir::CopyOptions::new(),
+    )
+    .unwrap();
+
+    std::fs::create_dir_all(share.join("elvish").join("completions"))?;
+    fs_extra::copy_items(
+        &[elvish_path],
+        share.join("elvish").join("completions"),
+        &fs_extra::dir::CopyOptions::new(),
+    )
+    .unwrap();
+
+    std::fs::create_dir_all(share.join("powershell").join("completions"))?;
+    fs_extra::copy_items(
+        &[ps_path],
+        share.join("powershell").join("completions"),
+        &fs_extra::dir::CopyOptions::new(),
+    )
+    .unwrap();
 
     Ok(())
 }

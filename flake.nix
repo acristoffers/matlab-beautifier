@@ -10,14 +10,16 @@
         version = "1.0.0";
         pkgs = (import nixpkgs) { inherit system; };
         naersk' = pkgs.callPackage naersk { };
-        buildInputs = with pkgs; [];
+        buildInputs = with pkgs; [ ];
         mkPackage = { name, buildInputs ? [ ] }: naersk'.buildPackage {
-          cargoBuildOptions = opts: opts ++ [ "--package" name ];
           inherit buildInputs;
           inherit name;
           inherit version;
           nativeBuildInputs = with pkgs;[ cmake pkgconfig ];
           src = ./.;
+          postInstall = "
+            cp -r target/release/share $out/share
+          ";
         };
       in
       rec {
