@@ -265,7 +265,7 @@ fn format_comment(state: &mut State, node: Node) {
     } else {
         let line = text.strip_prefix('%').unwrap().trim();
         if state.col == state.level * 4 {
-            if text.starts_with("%#") {
+            if text.starts_with("%#") || text.starts_with("%%") {
                 state.print("%");
             } else {
                 state.print("%");
@@ -273,7 +273,7 @@ fn format_comment(state: &mut State, node: Node) {
                     state.print(" ");
                 }
             }
-        } else if text.starts_with("%#") {
+        } else if text.starts_with("%#") || text.starts_with("%%") {
             state.print(" %");
         } else {
             state.print(" %");
