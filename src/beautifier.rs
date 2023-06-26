@@ -400,7 +400,7 @@ fn format_multioutput(state: &mut State, node: Node) {
     state.print("[");
     for (i, child) in children.enumerate() {
         if i != 0 {
-            state.print(",");
+            state.print(", ");
         }
         format_node(state, child);
     }
