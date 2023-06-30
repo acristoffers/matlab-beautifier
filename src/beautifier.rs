@@ -106,6 +106,7 @@ fn format_node(state: &mut State, node: Node) {
         "global_operator" => format_global(state, node),
         "handle_operator" => format_unary(state, node),
         "if_statement" => format_if(state, node),
+        "indirect_access" => format_parenthesis(state, node),
         "lambda" => format_lambda(state, node),
         "line_continuation" => format_line_continuation(state, node),
         "matrix" => format_matrix(state, node),
