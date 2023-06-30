@@ -652,12 +652,13 @@ fn format_switch(state: &mut State, node: Node) {
     if let Some(otherwise) = otherwise {
         let block = otherwise
             .children(&mut cursor)
-            .find(|c| c.kind() == "block")
-            .unwrap();
+            .find(|c| c.kind() == "block");
         state.indent();
         state.println("otherwise");
         state.level += 1;
-        format_block(state, block);
+        if let Some(block) = block {
+            format_block(state, block);
+        }
         state.level -= 1;
     }
     state.level -= 1;
