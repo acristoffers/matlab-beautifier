@@ -309,7 +309,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-matlab"
 version = "1.0.2"
-source = "git+https://github.com/acristoffers/tree-sitter-matlab#1e1e2dc8775fa3f1785c423d054843efd3c6043b"
+source = "git+https://github.com/acristoffers/tree-sitter-matlab#d7b24aaaf3e4814d073517d072727319d2b5ffc3"
 dependencies = [
  "cc",
  "tree-sitter",
