@@ -691,6 +691,7 @@ fn format_if(state: &mut State, node: Node) {
             .children(&mut cursor)
             .find(|c| c.kind() == "block")
             .unwrap();
+        state.indent();
         state.print("elseif ");
         format_node(state, condition);
         state.println("");
@@ -703,6 +704,7 @@ fn format_if(state: &mut State, node: Node) {
             .children(&mut cursor)
             .find(|c| c.kind() == "block")
             .unwrap();
+        state.indent();
         state.println("else");
         state.level += 1;
         format_block(state, block);
