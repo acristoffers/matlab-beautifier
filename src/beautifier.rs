@@ -635,16 +635,15 @@ fn format_switch(state: &mut State, node: Node) {
     state.level += 1;
     for case in cases {
         let condition = case.child_by_field_name("condition").unwrap();
-        let block = case
-            .children(&mut cursor)
-            .find(|c| c.kind() == "block")
-            .unwrap();
+        let block = case.children(&mut cursor).find(|c| c.kind() == "block");
         state.indent();
         state.print("case ");
         format_node(state, condition);
         state.println("");
         state.level += 1;
-        format_block(state, block);
+        if let Some(block) = block {
+            format_block(state, block);
+        }
         state.level -= 1;
     }
     let otherwise = node
