@@ -9,6 +9,7 @@ mod beautifier;
 
 use anyhow::{Context, Result};
 use args::{Arguments, Parser};
+use colored::*;
 use std::io::Read;
 
 use self::beautifier::beautify;
@@ -29,7 +30,7 @@ fn main() {
             if let (false, Err(_)) = (options.inplace, &r) {
                 r.unwrap()
             } else if let Err(err) = r {
-                println!("could not format ({})", err);
+                println!("{} ({})", "could not format".red(), err.to_string().red());
             }
         }
     }
@@ -46,10 +47,10 @@ fn beautify_file(file: Option<String>, options: &mut Arguments) -> Result<()> {
     }
     let result = beautify(code.as_str(), options)?;
     if options.inplace {
-        print!("file formatted ");
+        print!("{}", "file formatted ".green());
         match std::fs::write(file.unwrap().as_str(), result.as_bytes()) {
-            Ok(_) => println!("and overwritten."),
-            Err(_) => println!("but could not write back."),
+            Ok(_) => println!("{}", "and overwritten.".green()),
+            Err(_) => println!("{}", "but could not write back.".red()),
         }
     }
     Ok(())
