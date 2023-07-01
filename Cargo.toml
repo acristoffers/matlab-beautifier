@@ -5,8 +5,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.71"
+chardetng = "0.1.17"
 clap = { version = "4.1.13", features = ["derive", "env"] }
 colored = "2.0.0"
+encoding_rs = "0.8.32"
 tree-sitter = "~0.20.10"
 tree-sitter-matlab = { git = "https://github.com/acristoffers/tree-sitter-matlab" }
 
