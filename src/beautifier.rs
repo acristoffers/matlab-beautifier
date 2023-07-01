@@ -257,7 +257,7 @@ fn format_comment(state: &mut State, node: Node) -> Result<()> {
         if text.starts_with("%{") {
             let lines: Vec<&str> = text
                 .strip_prefix("%{")
-                .unwrap()
+                .unwrap_or(text)
                 .strip_suffix("%}")
                 .unwrap()
                 .split('\n')
@@ -276,7 +276,7 @@ fn format_comment(state: &mut State, node: Node) -> Result<()> {
         } else {
             let lines: Vec<&str> = text
                 .split('\n')
-                .map(|l| l.trim().strip_prefix('%').unwrap().trim())
+                .map(|l| l.trim().strip_prefix('%').unwrap_or(l.trim()).trim())
                 .collect();
             for (i, line) in lines.iter().enumerate() {
                 let line = line.trim();
@@ -292,7 +292,7 @@ fn format_comment(state: &mut State, node: Node) -> Result<()> {
             }
         }
     } else {
-        let line = text.strip_prefix('%').unwrap().trim();
+        let line = text.strip_prefix('%').unwrap_or(text).trim();
         if state.col == state.level * 4 {
             if text.starts_with("%#") || text.starts_with("%%") {
                 state.print("%");
