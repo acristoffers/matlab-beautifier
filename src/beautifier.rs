@@ -589,10 +589,7 @@ fn format_while(state: &mut State, node: Node) {
 
 fn format_try(state: &mut State, node: Node) {
     let mut cursor = node.walk();
-    let body = node
-        .children(&mut cursor)
-        .find(|c| c.kind() == "block")
-        .unwrap();
+    let body = node.children(&mut cursor).find(|c| c.kind() == "block");
     let catch = node
         .children(&mut cursor)
         .find(|c| c.kind() == "catch_clause")
@@ -600,13 +597,12 @@ fn format_try(state: &mut State, node: Node) {
     let catch_capture = catch
         .children(&mut cursor)
         .find(|c| c.kind() == "identifier");
-    let catch_body = catch
-        .children(&mut cursor)
-        .find(|c| c.kind() == "block")
-        .unwrap();
+    let catch_body = catch.children(&mut cursor).find(|c| c.kind() == "block");
     state.println("try");
     state.level += 1;
-    format_block(state, body);
+    if let Some(body) = body {
+        format_block(state, body);
+    }
     state.level -= 1;
     state.indent();
     state.print("catch");
@@ -616,7 +612,9 @@ fn format_try(state: &mut State, node: Node) {
     }
     state.println("");
     state.level += 1;
-    format_block(state, catch_body);
+    if let Some(catch_body) = catch_body {
+        format_block(state, catch_body);
+    }
     state.level -= 1;
     state.indent();
     state.print("end");
