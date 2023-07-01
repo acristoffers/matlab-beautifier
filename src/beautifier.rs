@@ -835,8 +835,8 @@ fn format_function(state: &mut State, node: Node) -> Result<()> {
         .children(&mut cursor)
         .filter(|n| !n.is_named())
         .find(|n| match n.utf8_text(state.code) {
-            Ok("get") => true,
-            Ok("set") => true,
+            Ok("get.") => true,
+            Ok("set.") => true,
             Ok(_) => false,
             Err(_) => false,
         });
@@ -1222,8 +1222,8 @@ fn format_signature(state: &mut State, node: Node) -> Result<()> {
         .children(&mut cursor)
         .filter(|n| !n.is_named())
         .find(|n| match n.utf8_text(state.code) {
-            Ok("get") => true,
-            Ok("set") => true,
+            Ok("get.") => true,
+            Ok("set.") => true,
             Ok(_) => false,
             Err(_) => false,
         });
