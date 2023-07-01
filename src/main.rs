@@ -28,6 +28,8 @@ fn main() {
             let r = beautify_file(Some(file), &mut options);
             if let (false, Err(_)) = (options.inplace, &r) {
                 r.unwrap()
+            } else if let Err(err) = r {
+                println!("could not format ({})", err);
             }
         }
     }
