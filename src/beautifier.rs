@@ -169,6 +169,9 @@ fn format_block(state: &mut State, node: Node) -> Result<()> {
     while let Some(n) = prev_node.prev_named_sibling() {
         prev_node = n;
         if n.kind() == "comment" {
+            if n.utf8_text(state.code)?.starts_with("%#") {
+                continue;
+            }
             named_children.insert(0, n);
         } else {
             break;
@@ -616,15 +619,17 @@ fn format_global(state: &mut State, node: Node) -> Result<()> {
 fn format_while(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let condition = node.child_by_field_name("condition").err_at_loc(&node)?;
-    let body = node
-        .children(&mut cursor)
-        .find(|c| c.kind() == "block")
-        .err_at_loc(&node)?;
+    let body = node.children(&mut cursor).find(|c| c.kind() == "block");
     state.print("while ");
     format_node(state, condition)?;
+    print_linter_comment(state, node)?;
     state.println("");
     state.level += 1;
-    format_block(state, body)?;
+    if let Some(body) = body {
+        format_block(state, body)?;
+    } else {
+        print_non_linter_comments(state, node)?;
+    }
     state.level -= 1;
     state.indent();
     state.print("end");
@@ -646,6 +651,8 @@ fn format_try(state: &mut State, node: Node) -> Result<()> {
     state.level += 1;
     if let Some(body) = body {
         format_block(state, body)?;
+    } else {
+        print_non_linter_comments(state, node)?;
     }
     state.level -= 1;
     state.indent();
@@ -654,10 +661,13 @@ fn format_try(state: &mut State, node: Node) -> Result<()> {
         state.print(" ");
         state.print_node(capture)?;
     }
+    print_linter_comment(state, catch)?;
     state.println("");
     state.level += 1;
     if let Some(catch_body) = catch_body {
         format_block(state, catch_body)?;
+    } else {
+        print_non_linter_comments(state, catch)?;
     }
     state.level -= 1;
     state.indent();
@@ -674,6 +684,7 @@ fn format_switch(state: &mut State, node: Node) -> Result<()> {
         .collect();
     state.print("switch ");
     format_node(state, condition)?;
+    print_linter_comment(state, node)?;
     state.println("");
     state.level += 1;
     for case in cases {
@@ -682,10 +693,13 @@ fn format_switch(state: &mut State, node: Node) -> Result<()> {
         state.indent();
         state.print("case ");
         format_node(state, condition)?;
+        print_linter_comment(state, case)?;
         state.println("");
         state.level += 1;
         if let Some(block) = block {
             format_block(state, block)?;
+        } else {
+            print_non_linter_comments(state, case)?;
         }
         state.level -= 1;
     }
@@ -701,6 +715,8 @@ fn format_switch(state: &mut State, node: Node) -> Result<()> {
         state.level += 1;
         if let Some(block) = block {
             format_block(state, block)?;
+        } else {
+            print_non_linter_comments(state, otherwise)?;
         }
         state.level -= 1;
     }
@@ -713,10 +729,7 @@ fn format_switch(state: &mut State, node: Node) -> Result<()> {
 fn format_if(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let condition = node.child_by_field_name("condition").err_at_loc(&node)?;
-    let block = node
-        .children(&mut cursor)
-        .find(|c| c.kind() == "block")
-        .err_at_loc(&node)?;
+    let block = node.children(&mut cursor).find(|c| c.kind() == "block");
     let elseif_clauses: Vec<Node> = node
         .named_children(&mut cursor)
         .filter(|c| c.kind() == "elseif_clause")
@@ -726,33 +739,46 @@ fn format_if(state: &mut State, node: Node) -> Result<()> {
         .find(|c| c.kind() == "else_clause");
     state.print("if ");
     format_node(state, condition)?;
+    print_linter_comment(state, node)?;
     state.println("");
     state.level += 1;
-    format_block(state, block)?;
+    if let Some(block) = block {
+        format_block(state, block)?;
+    } else {
+        print_non_linter_comments(state, node)?;
+    }
     state.level -= 1;
     for clause in elseif_clauses {
-        let condition = clause.child_by_field_name("condition").err_at_loc(&node)?;
-        let block = clause
-            .children(&mut cursor)
-            .find(|c| c.kind() == "block")
-            .err_at_loc(&node)?;
+        let condition = clause
+            .child_by_field_name("condition")
+            .err_at_loc(&clause)?;
+        let block = clause.children(&mut cursor).find(|c| c.kind() == "block");
         state.indent();
         state.print("elseif ");
         format_node(state, condition)?;
+        print_linter_comment(state, clause)?;
         state.println("");
         state.level += 1;
-        format_block(state, block)?;
+        state.extra_indentation = 0;
+        if let Some(block) = block {
+            format_block(state, block)?;
+        } else {
+            print_non_linter_comments_after(state, clause)?;
+        }
         state.level -= 1;
     }
     if let Some(else_clause) = else_clause {
         let block = else_clause
             .children(&mut cursor)
-            .find(|c| c.kind() == "block")
-            .err_at_loc(&node)?;
+            .find(|c| c.kind() == "block");
         state.indent();
         state.println("else");
         state.level += 1;
-        format_block(state, block)?;
+        if let Some(block) = block {
+            format_block(state, block)?;
+        } else {
+            print_non_linter_comments_after(state, else_clause)?;
+        }
         state.level -= 1;
     }
     state.indent();
@@ -769,10 +795,7 @@ fn format_for(state: &mut State, node: Node) -> Result<()> {
         .children(&mut cursor)
         .find(|c| c.kind() == "iterator")
         .err_at_loc(&node)?;
-    let block = node
-        .children(&mut cursor)
-        .find(|c| c.kind() == "block")
-        .err_at_loc(&node)?;
+    let block = node.children(&mut cursor).find(|c| c.kind() == "block");
     let parfor_options = node
         .children(&mut cursor)
         .find(|c| c.kind() == "parfor_options");
@@ -789,9 +812,14 @@ fn format_for(state: &mut State, node: Node) -> Result<()> {
         state.print(" = ");
         format_node(state, iterator.named_child(1).err_at_loc(&node)?)?;
     }
+    print_linter_comment(state, node)?;
     state.println("");
     state.level += 1;
-    format_block(state, block)?;
+    if let Some(block) = block {
+        format_block(state, block)?;
+    } else {
+        print_non_linter_comments(state, node)?;
+    }
     state.level -= 1;
     state.indent();
     state.print("end");
@@ -822,8 +850,7 @@ fn format_function(state: &mut State, node: Node) -> Result<()> {
         .collect();
     let block = node
         .named_children(&mut cursor)
-        .find(|n| n.kind() == "block")
-        .err_at_loc(&node)?;
+        .find(|n| n.kind() == "block");
     state.print("function ");
     if let Some(output) = output {
         format_node(state, output.child(0).err_at_loc(&node)?)?;
@@ -854,7 +881,9 @@ fn format_function(state: &mut State, node: Node) -> Result<()> {
         format_node(state, argument_statement)?;
         state.println("");
     }
-    format_block(state, block)?;
+    if let Some(block) = block {
+        format_block(state, block)?;
+    }
     state.level -= 1;
     state.indent();
     state.print("end");
@@ -1221,6 +1250,49 @@ fn format_signature(state: &mut State, node: Node) -> Result<()> {
             state.print_node(arg)?;
         }
         state.print(")");
+    }
+    Ok(())
+}
+
+fn print_linter_comment(state: &mut State, node: Node) -> Result<()> {
+    let mut cursor = node.walk();
+    let comments = node
+        .named_children(&mut cursor)
+        .filter(|n| n.kind() == "comment" && n.utf8_text(state.code).unwrap().starts_with("%#"));
+    for comment in comments {
+        format_comment(state, comment)?;
+    }
+    Ok(())
+}
+
+fn print_non_linter_comments(state: &mut State, node: Node) -> Result<()> {
+    let mut cursor = node.walk();
+    let comments = node
+        .named_children(&mut cursor)
+        .filter(|n| n.kind() == "comment" && !n.utf8_text(state.code).unwrap().starts_with("%#"));
+    for comment in comments {
+        state.indent();
+        format_comment(state, comment)?;
+        state.println("");
+    }
+    Ok(())
+}
+
+fn print_non_linter_comments_after(state: &mut State, node: Node) -> Result<()> {
+    let mut comments: Vec<Node> = vec![];
+    let mut cur = node;
+    while let Some(next) = cur.next_named_sibling() {
+        if next.kind() == "comment" && !next.utf8_text(state.code).unwrap().starts_with("%#") {
+            comments.push(next);
+            cur = next;
+        } else {
+            break;
+        }
+    }
+    for comment in comments {
+        state.indent();
+        format_comment(state, comment)?;
+        state.println("");
     }
     Ok(())
 }
