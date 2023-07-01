@@ -5,6 +5,7 @@
  */
 
 use super::args::Arguments;
+use anyhow::{anyhow, Context, Result};
 use tree_sitter::Node;
 
 struct State<'a> {
@@ -36,8 +37,9 @@ impl State<'_> {
         self.col += string.len();
     }
 
-    fn print_node(&mut self, node: Node) {
-        self.print(node.utf8_text(self.code).unwrap());
+    fn print_node(&mut self, node: Node) -> Result<()> {
+        self.print(node.utf8_text(self.code)?);
+        Ok(())
     }
 
     fn println(&mut self, string: &str) {
@@ -58,19 +60,35 @@ impl State<'_> {
     }
 }
 
-pub fn beautify(code: &str, arguments: &mut Arguments) -> Option<String> {
+trait TraversingError<T> {
+    fn err_at_loc(self, node: &Node) -> Result<T>;
+}
+
+impl<T> TraversingError<T> for Option<T> {
+    fn err_at_loc(self, node: &Node) -> Result<T> {
+        self.ok_or_else(|| {
+            anyhow!(
+                "Error accessing token around line {} col {}",
+                node.range().start_point.row,
+                node.range().start_point.column
+            )
+        })
+    }
+}
+
+pub fn beautify(code: &str, arguments: &mut Arguments) -> Result<String> {
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(tree_sitter_matlab::language())
-        .expect("Error loading MATLAB grammar.");
+        .with_context(|| "Could not set Tree-Sitter language")?;
 
     let tree = parser
-        .parse(&code, None)
-        .expect("An error occurred during parsing.");
+        .parse(code, None)
+        .ok_or_else(|| anyhow!("Could not parse file."))?;
 
     let root = tree.root_node();
     if root.has_error() {
-        return None;
+        return Err(anyhow!("Parsed file contain errors."));
     }
 
     let mut state = State {
@@ -83,11 +101,11 @@ pub fn beautify(code: &str, arguments: &mut Arguments) -> Option<String> {
         formatted: "".into(),
     };
 
-    format_block(&mut state, root);
-    Some(state.formatted)
+    format_block(&mut state, root)?;
+    Ok(state.formatted)
 }
 
-fn format_node(state: &mut State, node: Node) {
+fn format_node(state: &mut State, node: Node) -> Result<()> {
     match node.kind() {
         "arguments_statement" => format_arguments_statement(state, node),
         "assignment" => format_assignment(state, node),
@@ -128,7 +146,7 @@ fn format_node(state: &mut State, node: Node) {
     }
 }
 
-fn format_block(state: &mut State, node: Node) {
+fn format_block(state: &mut State, node: Node) -> Result<()> {
     let statements = vec![
         "arguments_statement",
         "class_definition",
@@ -173,7 +191,10 @@ fn format_block(state: &mut State, node: Node) {
         };
         let next = named_children.get(i + 1);
         if child.kind() == "command" {
-            let command_name = child.named_child(0).unwrap().utf8_text(state.code).unwrap();
+            let command_name = child
+                .named_child(0)
+                .err_at_loc(child)?
+                .utf8_text(state.code)?;
             if dedents.contains(&command_name) {
                 state.level = original_indentation;
             }
@@ -192,10 +213,13 @@ fn format_block(state: &mut State, node: Node) {
                 state.indent();
             }
         }
-        format_node(state, *child);
+        format_node(state, *child)?;
         state.extra_indentation = 0;
         if child.kind() == "command" {
-            let command_name = child.named_child(0).unwrap().utf8_text(state.code).unwrap();
+            let command_name = child
+                .named_child(0)
+                .err_at_loc(child)?
+                .utf8_text(state.code)?;
             if indents.contains(&command_name) {
                 state.level += 1;
             }
@@ -221,9 +245,10 @@ fn format_block(state: &mut State, node: Node) {
     state.extra_indentation = 0;
     state.level = original_indentation;
     state.println("");
+    Ok(())
 }
 
-fn format_comment(state: &mut State, node: Node) {
+fn format_comment(state: &mut State, node: Node) -> Result<()> {
     let text = node.utf8_text(state.code).unwrap();
     if node.range().start_point.row != node.range().end_point.row {
         if text.starts_with("%{") {
@@ -284,11 +309,12 @@ fn format_comment(state: &mut State, node: Node) {
         }
         state.print(line);
     }
+    Ok(())
 }
 
-fn format_line_continuation(state: &mut State, node: Node) {
+fn format_line_continuation(state: &mut State, node: Node) -> Result<()> {
     state.print(" ");
-    state.print_node(node);
+    state.print_node(node)?;
     if node.range().start_point.row == node.range().end_point.row {
         state.println("");
     } else {
@@ -296,18 +322,20 @@ fn format_line_continuation(state: &mut State, node: Node) {
         state.row += 1;
     }
     state.indent();
+    Ok(())
 }
 
-fn format_assignment(state: &mut State, node: Node) {
-    let lhs = node.child_by_field_name("left").unwrap();
-    let rhs = node.child_by_field_name("right").unwrap();
-    format_node(state, lhs);
+fn format_assignment(state: &mut State, node: Node) -> Result<()> {
+    let lhs = node.child_by_field_name("left").err_at_loc(&node)?;
+    let rhs = node.child_by_field_name("right").err_at_loc(&node)?;
+    format_node(state, lhs)?;
     state.print(" = ");
-    format_node(state, rhs);
+    format_node(state, rhs)?;
     state.extra_indentation = 0;
+    Ok(())
 }
 
-fn format_binary(state: &mut State, node: Node) {
+fn format_binary(state: &mut State, node: Node) -> Result<()> {
     state.maybe_set_extra_indentation(state.col - 4 * state.level);
     let add_ops = vec!["+", "-", ".+", ".-"];
     let mut line_cont = false;
@@ -315,9 +343,9 @@ fn format_binary(state: &mut State, node: Node) {
     for child in node.children(&mut cursor) {
         if child.is_named() {
             line_cont = child.kind() == "line_continuation";
-            format_node(state, child);
+            format_node(state, child)?;
         } else {
-            let operator = child.utf8_text(state.code).unwrap().trim();
+            let operator = child.utf8_text(state.code)?.trim();
             if state.arguments.sparse_math
                 || state.arguments.sparse_add && add_ops.contains(&operator)
             {
@@ -333,18 +361,19 @@ fn format_binary(state: &mut State, node: Node) {
             }
         }
     }
+    Ok(())
 }
 
-fn format_boolean(state: &mut State, node: Node) {
+fn format_boolean(state: &mut State, node: Node) -> Result<()> {
     state.maybe_set_extra_indentation(state.col - 4 * state.level);
     let mut line_cont = false;
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.is_named() {
             line_cont = child.kind() == "line_continuation";
-            format_node(state, child);
+            format_node(state, child)?;
         } else {
-            let operator = child.utf8_text(state.code).unwrap().trim();
+            let operator = child.utf8_text(state.code)?.trim();
             if !line_cont {
                 state.print(" ");
             }
@@ -353,31 +382,34 @@ fn format_boolean(state: &mut State, node: Node) {
             state.print(" ");
         }
     }
+    Ok(())
 }
 
-fn format_unary(state: &mut State, node: Node) {
+fn format_unary(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let children = node
         .children(&mut cursor)
         .filter(|f| f.kind() != "line_continuation");
     for child in children {
-        format_node(state, child);
+        format_node(state, child)?;
     }
+    Ok(())
 }
 
-fn format_parenthesis(state: &mut State, node: Node) {
+fn format_parenthesis(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let child = node
         .named_children(&mut cursor)
         .find(|c| c.kind() != "line_continuation")
-        .unwrap();
+        .err_at_loc(&node)?;
     state.print("(");
     state.maybe_set_extra_indentation(state.col - 4 * state.level);
-    format_node(state, child);
+    format_node(state, child)?;
     state.print(")");
+    Ok(())
 }
 
-fn format_range(state: &mut State, node: Node) {
+fn format_range(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let children = node
         .named_children(&mut cursor)
@@ -388,12 +420,13 @@ fn format_range(state: &mut State, node: Node) {
         if i != 0 {
             state.print(":");
         }
-        format_node(state, child);
+        format_node(state, child)?;
     }
     state.arguments.sparse_math = sparse;
+    Ok(())
 }
 
-fn format_multioutput(state: &mut State, node: Node) {
+fn format_multioutput(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let children = node
         .named_children(&mut cursor)
@@ -403,15 +436,16 @@ fn format_multioutput(state: &mut State, node: Node) {
         if i != 0 {
             state.print(", ");
         }
-        format_node(state, child);
+        format_node(state, child)?;
     }
     state.print("]");
+    Ok(())
 }
 
-fn format_lambda(state: &mut State, node: Node) {
+fn format_lambda(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let arguments = node.children(&mut cursor).find(|c| c.kind() == "arguments");
-    let expression = node.child_by_field_name("expression").unwrap();
+    let expression = node.child_by_field_name("expression").err_at_loc(&node)?;
     state.print("@");
     state.print("(");
     if let Some(args) = arguments {
@@ -422,14 +456,15 @@ fn format_lambda(state: &mut State, node: Node) {
             if i != 0 {
                 state.print(", ");
             }
-            state.print_node(arg);
+            state.print_node(arg)?;
         }
     }
     state.print(") ");
-    format_node(state, expression);
+    format_node(state, expression)?;
+    Ok(())
 }
 
-fn format_fncall(state: &mut State, node: Node) {
+fn format_fncall(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let children = node.children(&mut cursor);
     let mut parens = true;
@@ -438,14 +473,14 @@ fn format_fncall(state: &mut State, node: Node) {
             continue;
         }
         if !child.is_named() {
-            if child.utf8_text(state.code).unwrap() == "(" {
+            if child.utf8_text(state.code)? == "(" {
                 break;
-            } else if child.utf8_text(state.code).unwrap() == "{" {
+            } else if child.utf8_text(state.code)? == "{" {
                 parens = false;
                 break;
             }
         }
-        format_node(state, child);
+        format_node(state, child)?;
     }
     if parens {
         state.print("(");
@@ -456,7 +491,7 @@ fn format_fncall(state: &mut State, node: Node) {
     state.extra_indentation = state.col - 4 * state.level;
     let arguments = node.children(&mut cursor).find(|c| c.kind() == "arguments");
     if let Some(args) = arguments {
-        format_arguments(state, args);
+        format_arguments(state, args)?;
     }
     if parens {
         state.print(")");
@@ -464,44 +499,48 @@ fn format_fncall(state: &mut State, node: Node) {
         state.print("}");
     }
     state.extra_indentation = prev_extra;
+    Ok(())
 }
 
-fn format_arguments(state: &mut State, node: Node) {
+fn format_arguments(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     for (i, child) in node.named_children(&mut cursor).enumerate() {
         if i != 0 {
             state.print(", ");
         }
-        format_node(state, child);
+        format_node(state, child)?;
     }
+    Ok(())
 }
 
-fn format_command(state: &mut State, node: Node) {
+fn format_command(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     for (i, child) in node.children(&mut cursor).enumerate() {
         if i != 0 {
             state.print(" ");
         }
-        format_node(state, child);
+        format_node(state, child)?;
         if child.kind() == "command_name" {
             state.extra_indentation = state.col - 4 * state.level;
         }
     }
     state.extra_indentation = 0;
+    Ok(())
 }
 
-fn format_field(state: &mut State, node: Node) {
+fn format_field(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let children = node.named_children(&mut cursor).filter(|c| !c.is_extra());
     for (i, child) in children.enumerate() {
         if i != 0 {
             state.print(".");
         }
-        format_node(state, child);
+        format_node(state, child)?;
     }
+    Ok(())
 }
 
-fn format_matrix(state: &mut State, node: Node) {
+fn format_matrix(state: &mut State, node: Node) -> Result<()> {
     let matrix = node.kind() == "matrix";
     let multiline = node.range().start_point.row != node.range().end_point.row;
     let mut cursor = node.walk();
@@ -518,7 +557,7 @@ fn format_matrix(state: &mut State, node: Node) {
             if !first {
                 state.print(";");
             }
-            format_comment(state, child);
+            format_comment(state, child)?;
             state.println("");
             state.indent();
             first = true;
@@ -532,7 +571,7 @@ fn format_matrix(state: &mut State, node: Node) {
                 state.print("; ");
             }
         }
-        format_node(state, child);
+        format_node(state, child)?;
         if !child.is_extra() {
             first = false;
         }
@@ -543,21 +582,23 @@ fn format_matrix(state: &mut State, node: Node) {
         state.print("}");
     }
     state.extra_indentation = prev_extra;
+    Ok(())
 }
 
-fn format_row(state: &mut State, node: Node) {
+fn format_row(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let mut first = true;
     for child in node.named_children(&mut cursor) {
         if !first && !child.is_extra() {
             state.print(" ");
         }
-        format_node(state, child);
+        format_node(state, child)?;
         first = child.is_extra();
     }
+    Ok(())
 }
 
-fn format_global(state: &mut State, node: Node) {
+fn format_global(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let children = node
         .children(&mut cursor)
@@ -566,34 +607,36 @@ fn format_global(state: &mut State, node: Node) {
         if i != 0 {
             state.print(" ");
         }
-        state.print_node(child);
+        state.print_node(child)?;
     }
+    Ok(())
 }
 
-fn format_while(state: &mut State, node: Node) {
+fn format_while(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
-    let condition = node.child_by_field_name("condition").unwrap();
+    let condition = node.child_by_field_name("condition").err_at_loc(&node)?;
     let body = node
         .children(&mut cursor)
         .find(|c| c.kind() == "block")
-        .unwrap();
+        .err_at_loc(&node)?;
     state.print("while ");
-    format_node(state, condition);
+    format_node(state, condition)?;
     state.println("");
     state.level += 1;
-    format_block(state, body);
+    format_block(state, body)?;
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_try(state: &mut State, node: Node) {
+fn format_try(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let body = node.children(&mut cursor).find(|c| c.kind() == "block");
     let catch = node
         .children(&mut cursor)
         .find(|c| c.kind() == "catch_clause")
-        .unwrap();
+        .err_at_loc(&node)?;
     let catch_capture = catch
         .children(&mut cursor)
         .find(|c| c.kind() == "identifier");
@@ -601,46 +644,47 @@ fn format_try(state: &mut State, node: Node) {
     state.println("try");
     state.level += 1;
     if let Some(body) = body {
-        format_block(state, body);
+        format_block(state, body)?;
     }
     state.level -= 1;
     state.indent();
     state.print("catch");
     if let Some(capture) = catch_capture {
         state.print(" ");
-        state.print_node(capture);
+        state.print_node(capture)?;
     }
     state.println("");
     state.level += 1;
     if let Some(catch_body) = catch_body {
-        format_block(state, catch_body);
+        format_block(state, catch_body)?;
     }
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_switch(state: &mut State, node: Node) {
+fn format_switch(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
-    let condition = node.child_by_field_name("condition").unwrap();
+    let condition = node.child_by_field_name("condition").err_at_loc(&node)?;
     let cases: Vec<Node> = node
         .named_children(&mut cursor)
         .filter(|c| c.kind() == "case_clause")
         .collect();
     state.print("switch ");
-    format_node(state, condition);
+    format_node(state, condition)?;
     state.println("");
     state.level += 1;
     for case in cases {
-        let condition = case.child_by_field_name("condition").unwrap();
+        let condition = case.child_by_field_name("condition").err_at_loc(&case)?;
         let block = case.children(&mut cursor).find(|c| c.kind() == "block");
         state.indent();
         state.print("case ");
-        format_node(state, condition);
+        format_node(state, condition)?;
         state.println("");
         state.level += 1;
         if let Some(block) = block {
-            format_block(state, block);
+            format_block(state, block)?;
         }
         state.level -= 1;
     }
@@ -655,22 +699,23 @@ fn format_switch(state: &mut State, node: Node) {
         state.println("otherwise");
         state.level += 1;
         if let Some(block) = block {
-            format_block(state, block);
+            format_block(state, block)?;
         }
         state.level -= 1;
     }
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_if(state: &mut State, node: Node) {
+fn format_if(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
-    let condition = node.child_by_field_name("condition").unwrap();
+    let condition = node.child_by_field_name("condition").err_at_loc(&node)?;
     let block = node
         .children(&mut cursor)
         .find(|c| c.kind() == "block")
-        .unwrap();
+        .err_at_loc(&node)?;
     let elseif_clauses: Vec<Node> = node
         .named_children(&mut cursor)
         .filter(|c| c.kind() == "elseif_clause")
@@ -679,78 +724,80 @@ fn format_if(state: &mut State, node: Node) {
         .named_children(&mut cursor)
         .find(|c| c.kind() == "else_clause");
     state.print("if ");
-    format_node(state, condition);
+    format_node(state, condition)?;
     state.println("");
     state.level += 1;
-    format_block(state, block);
+    format_block(state, block)?;
     state.level -= 1;
     for clause in elseif_clauses {
-        let condition = clause.child_by_field_name("condition").unwrap();
+        let condition = clause.child_by_field_name("condition").err_at_loc(&node)?;
         let block = clause
             .children(&mut cursor)
             .find(|c| c.kind() == "block")
-            .unwrap();
+            .err_at_loc(&node)?;
         state.indent();
         state.print("elseif ");
-        format_node(state, condition);
+        format_node(state, condition)?;
         state.println("");
         state.level += 1;
-        format_block(state, block);
+        format_block(state, block)?;
         state.level -= 1;
     }
     if let Some(else_clause) = else_clause {
         let block = else_clause
             .children(&mut cursor)
             .find(|c| c.kind() == "block")
-            .unwrap();
+            .err_at_loc(&node)?;
         state.indent();
         state.println("else");
         state.level += 1;
-        format_block(state, block);
+        format_block(state, block)?;
         state.level -= 1;
     }
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_for(state: &mut State, node: Node) {
+fn format_for(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
-    let parfor = node.child(0).unwrap().utf8_text(state.code).unwrap();
+    let parfor = node.child(0).err_at_loc(&node)?.utf8_text(state.code)?;
     state.print(parfor);
     state.print(" ");
     let iterator = node
         .children(&mut cursor)
         .find(|c| c.kind() == "iterator")
-        .unwrap();
+        .err_at_loc(&node)?;
     let block = node
         .children(&mut cursor)
         .find(|c| c.kind() == "block")
-        .unwrap();
+        .err_at_loc(&node)?;
     let parfor_options = node
         .children(&mut cursor)
         .find(|c| c.kind() == "parfor_options");
     if let Some(options) = parfor_options {
         state.print("(");
-        state.print_node(iterator.named_child(0).unwrap());
+        state.print_node(iterator.named_child(0).err_at_loc(&node)?)?;
         state.print(" = ");
-        format_node(state, iterator.named_child(1).unwrap());
+        format_node(state, iterator.named_child(1).err_at_loc(&node)?)?;
         state.print(", ");
-        state.print_node(options.named_child(0).unwrap());
+        state.print_node(options.named_child(0).err_at_loc(&node)?)?;
         state.print(")");
     } else {
-        state.print_node(iterator.named_child(0).unwrap());
+        state.print_node(iterator.named_child(0).err_at_loc(&node)?)?;
         state.print(" = ");
-        format_node(state, iterator.named_child(1).unwrap());
+        format_node(state, iterator.named_child(1).err_at_loc(&node)?)?;
     }
     state.println("");
     state.level += 1;
-    format_block(state, block);
+    format_block(state, block)?;
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_function(state: &mut State, node: Node) {
+fn format_function(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let output = node
         .named_children(&mut cursor)
@@ -764,7 +811,7 @@ fn format_function(state: &mut State, node: Node) {
             Ok(_) => false,
             Err(_) => false,
         });
-    let name = node.child_by_field_name("name").unwrap();
+    let name = node.child_by_field_name("name").err_at_loc(&node)?;
     let arguments = node
         .named_children(&mut cursor)
         .find(|n| n.kind() == "function_arguments");
@@ -775,17 +822,17 @@ fn format_function(state: &mut State, node: Node) {
     let block = node
         .named_children(&mut cursor)
         .find(|n| n.kind() == "block")
-        .unwrap();
+        .err_at_loc(&node)?;
     state.print("function ");
     if let Some(output) = output {
-        format_node(state, output.child(0).unwrap());
+        format_node(state, output.child(0).err_at_loc(&node)?)?;
         state.print(" = ");
     }
     if let Some(get_set) = get_set {
-        state.print_node(get_set);
+        state.print_node(get_set)?;
         state.print(".");
     }
-    state.print_node(name);
+    state.print_node(name)?;
     if let Some(arguments) = arguments {
         state.print("(");
         let children = arguments
@@ -795,7 +842,7 @@ fn format_function(state: &mut State, node: Node) {
             if i != 0 {
                 state.print(", ");
             }
-            state.print_node(arg);
+            state.print_node(arg)?;
         }
         state.print(")");
     }
@@ -803,16 +850,17 @@ fn format_function(state: &mut State, node: Node) {
     state.level += 1;
     for argument_statement in argument_statements {
         state.indent();
-        format_node(state, argument_statement);
+        format_node(state, argument_statement)?;
         state.println("");
     }
-    format_block(state, block);
+    format_block(state, block)?;
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_arguments_statement(state: &mut State, node: Node) {
+fn format_arguments_statement(state: &mut State, node: Node) -> Result<()> {
     state.extra_indentation = 0;
     let mut cursor = node.walk();
     let attributes = node
@@ -824,24 +872,25 @@ fn format_arguments_statement(state: &mut State, node: Node) {
     state.print("arguments");
     if let Some(attributes) = attributes {
         state.print(" (");
-        format_arguments(state, attributes);
+        format_arguments(state, attributes)?;
         state.print(")");
     }
     state.println("");
     state.level += 1;
     for property in properties {
         state.indent();
-        format_property(state, property);
+        format_property(state, property)?;
         state.println("");
     }
     state.level -= 1;
     state.indent();
-    state.print("end")
+    state.print("end");
+    Ok(())
 }
 
-fn format_property(state: &mut State, node: Node) {
+fn format_property(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
-    let name = node.child_by_field_name("name").unwrap();
+    let name = node.child_by_field_name("name").err_at_loc(&node)?;
     let dimensions = node
         .children(&mut cursor)
         .find(|c| c.kind() == "dimensions");
@@ -856,54 +905,60 @@ fn format_property(state: &mut State, node: Node) {
         .children(&mut cursor)
         .find(|c| c.kind() == "default_value");
     if name.kind() == "identifier" {
-        state.print_node(name);
+        state.print_node(name)?;
     } else {
-        format_property_name(state, name);
+        format_property_name(state, name)?;
     }
     if let Some(dimmensions) = dimensions {
         state.print(" ");
-        format_dimensions(state, dimmensions);
+        format_dimensions(state, dimmensions)?;
     }
     if let Some(class) = class {
         state.print(" ");
-        format_node(state, class);
+        format_node(state, class)?;
     }
     if let Some(validation_functions) = validation_functions {
         state.print(" {");
-        format_arguments(state, validation_functions);
+        format_arguments(state, validation_functions)?;
         state.print("}");
     }
     if let Some(default_value) = default_value {
         state.print(" = ");
-        format_node(state, default_value.named_child(0).unwrap());
+        format_node(
+            state,
+            default_value.named_child(0).err_at_loc(&default_value)?,
+        )?;
     }
+    Ok(())
 }
 
-fn format_property_name(state: &mut State, node: Node) {
+fn format_property_name(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        state.print_node(child);
+        state.print_node(child)?;
     }
+    Ok(())
 }
 
-fn format_dimensions(state: &mut State, node: Node) {
+fn format_dimensions(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     state.print("(");
     for (i, child) in node.named_children(&mut cursor).enumerate() {
         if i != 0 {
             state.print(",");
         }
-        state.print_node(child);
+        state.print_node(child)?;
     }
     state.print(")");
+    Ok(())
 }
 
-fn format_classdef(state: &mut State, node: Node) {
+fn format_classdef(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let attributes = node
         .children(&mut cursor)
         .find(|c| c.kind() == "attributes");
-    let name = node.child_by_field_name("name").unwrap();
+    let name = node.child_by_field_name("name").err_at_loc(&node)?;
     let superclasses = node
         .children(&mut cursor)
         .find(|c| c.kind() == "superclasses");
@@ -925,17 +980,17 @@ fn format_classdef(state: &mut State, node: Node) {
         .collect();
     state.print("classdef ");
     if let Some(attributes) = attributes {
-        format_attributes(state, attributes);
+        format_attributes(state, attributes)?;
         state.print(" ");
     }
-    state.print_node(name);
+    state.print_node(name)?;
     if let Some(superclasses) = superclasses {
         state.print(" < ");
         for (i, superclass) in superclasses.named_children(&mut cursor).enumerate() {
             if i != 0 {
                 state.print(" & ");
             }
-            format_property_name(state, superclass);
+            format_property_name(state, superclass)?;
         }
     }
     state.println("");
@@ -943,29 +998,30 @@ fn format_classdef(state: &mut State, node: Node) {
     state.level += 1;
     for property in properties {
         state.indent();
-        format_properties(state, property);
+        format_properties(state, property)?;
         state.println("");
     }
     for enumeration in enumerations {
         state.indent();
-        format_enum(state, enumeration);
+        format_enum(state, enumeration)?;
         state.println("");
     }
     for event in events {
         state.indent();
-        format_events(state, event);
+        format_events(state, event)?;
         state.println("");
     }
     for method in methods {
         state.indent();
-        format_method(state, method);
+        format_method(state, method)?;
         state.println("");
     }
     state.level -= 1;
     state.print("end");
+    Ok(())
 }
 
-fn format_attributes(state: &mut State, node: Node) {
+fn format_attributes(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     state.print("(");
     let attributes = node
@@ -975,22 +1031,24 @@ fn format_attributes(state: &mut State, node: Node) {
         if i != 0 {
             state.print(", ");
         }
-        format_attribute(state, attr);
+        format_attribute(state, attr)?;
     }
     state.print(")");
+    Ok(())
 }
 
-fn format_attribute(state: &mut State, node: Node) {
-    let identifier = node.named_child(0).unwrap();
+fn format_attribute(state: &mut State, node: Node) -> Result<()> {
+    let identifier = node.named_child(0).err_at_loc(&node)?;
     let value = node.named_child(1);
-    state.print_node(identifier);
+    state.print_node(identifier)?;
     if let Some(value) = value {
         state.print("=");
-        format_node(state, value);
+        format_node(state, value)?;
     }
+    Ok(())
 }
 
-fn format_properties(state: &mut State, node: Node) {
+fn format_properties(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let attributes = node
         .named_children(&mut cursor)
@@ -1001,21 +1059,22 @@ fn format_properties(state: &mut State, node: Node) {
     state.print("properties");
     if let Some(attributes) = attributes {
         state.print(" ");
-        format_attributes(state, attributes);
+        format_attributes(state, attributes)?;
     }
     state.println("");
     state.level += 1;
     for property in properties {
         state.indent();
-        format_property(state, property);
+        format_property(state, property)?;
         state.println("");
     }
     state.level -= 1;
     state.indent();
-    state.print("end")
+    state.print("end");
+    Ok(())
 }
 
-fn format_enum(state: &mut State, node: Node) {
+fn format_enum(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let attributes = node
         .named_children(&mut cursor)
@@ -1027,7 +1086,7 @@ fn format_enum(state: &mut State, node: Node) {
     state.print("enumeration");
     if let Some(attributes) = attributes {
         state.print(" ");
-        format_attributes(state, attributes);
+        format_attributes(state, attributes)?;
     }
     state.println("");
     state.level += 1;
@@ -1036,14 +1095,14 @@ fn format_enum(state: &mut State, node: Node) {
         let mut parens = false;
         for (i, c) in enumeration.named_children(&mut cursor).enumerate() {
             if i == 0 {
-                state.print_node(c);
+                state.print_node(c)?;
             } else if i == 1 {
                 parens = true;
                 state.print(" (");
-                format_node(state, c);
+                format_node(state, c)?;
             } else {
                 state.print(", ");
-                format_node(state, c);
+                format_node(state, c)?;
             }
         }
         if parens {
@@ -1054,9 +1113,10 @@ fn format_enum(state: &mut State, node: Node) {
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_events(state: &mut State, node: Node) {
+fn format_events(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let attributes = node
         .named_children(&mut cursor)
@@ -1067,21 +1127,22 @@ fn format_events(state: &mut State, node: Node) {
     state.print("events");
     if let Some(attributes) = attributes {
         state.print(" ");
-        format_attributes(state, attributes);
+        format_attributes(state, attributes)?;
     }
     state.println("");
     state.level += 1;
     for identifier in identifiers {
         state.indent();
-        state.print_node(identifier);
+        state.print_node(identifier)?;
         state.println("");
     }
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_method(state: &mut State, node: Node) {
+fn format_method(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let attributes = node
         .named_children(&mut cursor)
@@ -1097,13 +1158,13 @@ fn format_method(state: &mut State, node: Node) {
     state.print("methods");
     if let Some(attributes) = attributes {
         state.print(" ");
-        format_attributes(state, attributes);
+        format_attributes(state, attributes)?;
     }
     state.println("");
     state.level += 1;
     for signature in &signatures {
         state.indent();
-        format_signature(state, *signature);
+        format_signature(state, *signature)?;
         state.println("");
     }
     for (i, definition) in definitions.iter().enumerate() {
@@ -1111,15 +1172,16 @@ fn format_method(state: &mut State, node: Node) {
             state.println("");
         }
         state.indent();
-        format_function(state, *definition);
+        format_function(state, *definition)?;
         state.println("");
     }
     state.level -= 1;
     state.indent();
     state.print("end");
+    Ok(())
 }
 
-fn format_signature(state: &mut State, node: Node) {
+fn format_signature(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let output = node
         .named_children(&mut cursor)
@@ -1133,19 +1195,19 @@ fn format_signature(state: &mut State, node: Node) {
             Ok(_) => false,
             Err(_) => false,
         });
-    let name = node.child_by_field_name("name").unwrap();
+    let name = node.child_by_field_name("name").err_at_loc(&node)?;
     let arguments = node
         .named_children(&mut cursor)
         .find(|n| n.kind() == "function_arguments");
     if let Some(output) = output {
-        format_node(state, output.child(0).unwrap());
+        format_node(state, output.child(0).err_at_loc(&output)?)?;
         state.print(" = ");
     }
     if let Some(get_set) = get_set {
-        state.print_node(get_set);
+        state.print_node(get_set)?;
         state.print(".");
     }
-    state.print_node(name);
+    state.print_node(name)?;
     if let Some(arguments) = arguments {
         state.print("(");
         let children = arguments
@@ -1155,8 +1217,9 @@ fn format_signature(state: &mut State, node: Node) {
             if i != 0 {
                 state.print(", ");
             }
-            state.print_node(arg);
+            state.print_node(arg)?;
         }
         state.print(")");
     }
+    Ok(())
 }
