@@ -883,6 +883,8 @@ fn format_function(state: &mut State, node: Node) -> Result<()> {
     }
     if let Some(block) = block {
         format_block(state, block)?;
+    } else {
+        print_non_linter_comments(state, node)?;
     }
     state.level -= 1;
     state.indent();
