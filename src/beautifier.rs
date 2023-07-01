@@ -504,11 +504,12 @@ fn format_fncall(state: &mut State, node: Node) -> Result<()> {
 
 fn format_arguments(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
-    for (i, child) in node.named_children(&mut cursor).enumerate() {
-        if i != 0 {
+    let children: Vec<Node> = node.named_children(&mut cursor).collect();
+    for (i, child) in children.iter().enumerate() {
+        if i != 0 && children.get(i - 1).unwrap().kind() != "line_continuation" {
             state.print(", ");
         }
-        format_node(state, child)?;
+        format_node(state, *child)?;
     }
     Ok(())
 }
