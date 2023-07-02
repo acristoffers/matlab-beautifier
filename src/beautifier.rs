@@ -641,12 +641,7 @@ fn format_try(state: &mut State, node: Node) -> Result<()> {
     let body = node.children(&mut cursor).find(|c| c.kind() == "block");
     let catch = node
         .children(&mut cursor)
-        .find(|c| c.kind() == "catch_clause")
-        .err_at_loc(&node)?;
-    let catch_capture = catch
-        .children(&mut cursor)
-        .find(|c| c.kind() == "identifier");
-    let catch_body = catch.children(&mut cursor).find(|c| c.kind() == "block");
+        .find(|c| c.kind() == "catch_clause");
     state.println("try");
     state.level += 1;
     if let Some(body) = body {
@@ -655,21 +650,27 @@ fn format_try(state: &mut State, node: Node) -> Result<()> {
         print_non_linter_comments(state, node)?;
     }
     state.level -= 1;
-    state.indent();
-    state.print("catch");
-    if let Some(capture) = catch_capture {
-        state.print(" ");
-        state.print_node(capture)?;
+    if let Some(catch) = catch {
+        let catch_capture = catch
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier");
+        let catch_body = catch.children(&mut cursor).find(|c| c.kind() == "block");
+        state.indent();
+        state.print("catch");
+        if let Some(capture) = catch_capture {
+            state.print(" ");
+            state.print_node(capture)?;
+        }
+        print_linter_comment(state, catch)?;
+        state.println("");
+        state.level += 1;
+        if let Some(catch_body) = catch_body {
+            format_block(state, catch_body)?;
+        } else {
+            print_non_linter_comments(state, catch)?;
+        }
+        state.level -= 1;
     }
-    print_linter_comment(state, catch)?;
-    state.println("");
-    state.level += 1;
-    if let Some(catch_body) = catch_body {
-        format_block(state, catch_body)?;
-    } else {
-        print_non_linter_comments(state, catch)?;
-    }
-    state.level -= 1;
     state.indent();
     state.print("end");
     Ok(())
