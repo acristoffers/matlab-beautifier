@@ -859,7 +859,6 @@ fn format_function(state: &mut State, node: Node) -> Result<()> {
     }
     if let Some(get_set) = get_set {
         state.print_node(get_set)?;
-        state.print(".");
     }
     state.print_node(name)?;
     if let Some(arguments) = arguments {
@@ -1238,7 +1237,6 @@ fn format_signature(state: &mut State, node: Node) -> Result<()> {
     }
     if let Some(get_set) = get_set {
         state.print_node(get_set)?;
-        state.print(".");
     }
     state.print_node(name)?;
     if let Some(arguments) = arguments {
