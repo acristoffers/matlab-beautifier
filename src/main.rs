@@ -38,9 +38,9 @@ fn main() {
 fn beautify_file(file: Option<String>, options: &mut Arguments) -> Result<()> {
     let code = if let Some(file) = &file {
         let mut file = std::fs::File::open(file)?;
-        read_to_string(&mut file, None)?.0
+        read_to_string(&mut file, None)?.0 + "\n"
     } else {
-        read_to_string(&mut std::io::stdin(), None)?.0
+        read_to_string(&mut std::io::stdin(), None)?.0 + "\n"
     };
     let result = beautify(code.as_str(), options)?;
     if options.inplace {
