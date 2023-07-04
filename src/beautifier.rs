@@ -280,11 +280,15 @@ fn format_comment(state: &mut State, node: Node) -> Result<()> {
                 .split('\n')
                 .map(|l| l.trim().strip_prefix('%').unwrap_or(l.trim()).trim())
                 .collect();
+            if state.level * 4 + state.extra_indentation != state.col {
+                state.print(" ");
+            }
+            let col = state.col;
             for (i, line) in lines.iter().enumerate() {
                 let line = line.trim();
                 if i != 0 {
                     state.println("");
-                    state.indent();
+                    state.print(" ".repeat(col).as_str());
                 }
                 state.print("%");
                 if !line.is_empty() {
@@ -295,14 +299,10 @@ fn format_comment(state: &mut State, node: Node) -> Result<()> {
         }
     } else {
         let line = text.strip_prefix('%').unwrap_or(text).trim();
-        if state.col == state.level * 4 {
-            if text.starts_with("%#") || text.starts_with("%%") {
-                state.print("%");
-            } else {
-                state.print("%");
-                if !line.is_empty() {
-                    state.print(" ");
-                }
+        if state.col == state.level * 4 + state.extra_indentation {
+            state.print("%");
+            if !text.starts_with("%#") && !text.starts_with("%%") && !line.is_empty() {
+                state.print(" ");
             }
         } else if text.starts_with("%#") || text.starts_with("%%") {
             state.print(" %");
