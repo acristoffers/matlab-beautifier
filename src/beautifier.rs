@@ -16,6 +16,7 @@ struct State<'a> {
     row: usize,
     level: usize,
     extra_indentation: usize,
+    cell_size: Option<Vec<usize>>,
 }
 
 impl State<'_> {
@@ -99,6 +100,7 @@ pub fn beautify(code: &str, arguments: &mut Arguments) -> Result<String> {
         level: 0,
         extra_indentation: 0,
         formatted: "".into(),
+        cell_size: None,
     };
 
     format_block(&mut state, root)?;
@@ -547,6 +549,11 @@ fn format_field(state: &mut State, node: Node) -> Result<()> {
 fn format_matrix(state: &mut State, node: Node) -> Result<()> {
     let matrix = node.kind() == "matrix";
     let multiline = node.range().start_point.row != node.range().end_point.row;
+    let saved_cell_sizes = state.cell_size.clone();
+    state.cell_size = None;
+    if multiline {
+        calculate_column_sizes(state, node)?;
+    }
     let mut cursor = node.walk();
     if matrix {
         state.print("[");
@@ -586,18 +593,78 @@ fn format_matrix(state: &mut State, node: Node) -> Result<()> {
         state.print("}");
     }
     state.extra_indentation = prev_extra;
+    state.cell_size = saved_cell_sizes;
     Ok(())
 }
 
 fn format_row(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let mut first = true;
-    for child in node.named_children(&mut cursor) {
+    let mut i: usize = 0;
+    let children: Vec<Node> = node.named_children(&mut cursor).collect();
+    for (j, child) in children.iter().enumerate() {
         if !first && !child.is_extra() {
             state.print(" ");
         }
-        format_node(state, child)?;
+        let col_start = state.col;
+        format_node(state, *child)?;
+        if let Some(cell_size) = &state.cell_size {
+            if !child.is_extra() && i < cell_size.len() && j != children.len() - 1 {
+                state.print(" ".repeat(cell_size[i] + col_start - state.col).as_str());
+            }
+        }
         first = child.is_extra();
+        if child.is_extra() {
+            i = 0;
+        } else {
+            i += 1;
+        }
+    }
+    Ok(())
+}
+
+fn calculate_column_sizes(state: &mut State, node: Node) -> Result<()> {
+    let mut cursor = node.walk();
+    let saved_formatted = state.formatted.clone();
+    let saved_inplace = state.arguments.inplace;
+    let saved_row = state.row;
+    let saved_col = state.col;
+    let saved_level = state.level;
+    let saved_extra_indent = state.extra_indentation;
+    state.level = 0;
+    state.extra_indentation = 0;
+    state.arguments.inplace = true;
+    state.formatted.clear();
+    state.col = 0;
+    let mut cell_size = vec![0usize];
+    for row in node.named_children(&mut cursor).filter(|c| !c.is_extra()) {
+        let mut cursor2 = row.walk();
+        let mut i = 0;
+        for cell in row.named_children(&mut cursor2) {
+            if cell.is_extra() {
+                i = 0;
+                continue;
+            }
+            format_node(state, cell)?;
+            if cell_size.len() > i {
+                cell_size[i] = cell_size[i].max(state.col);
+            } else {
+                cell_size.push(state.col);
+            }
+            state.formatted.clear();
+            state.col = 0;
+            i += 1;
+        }
+    }
+    cell_size.pop();
+    state.formatted = saved_formatted;
+    state.arguments.inplace = saved_inplace;
+    state.row = saved_row;
+    state.col = saved_col;
+    state.level = saved_level;
+    state.extra_indentation = saved_extra_indent;
+    if !cell_size.is_empty() {
+        state.cell_size = Some(cell_size);
     }
     Ok(())
 }
