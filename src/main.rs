@@ -19,7 +19,7 @@ fn main() {
         options.inplace = false;
         beautify_file(None, &mut options).unwrap();
     } else {
-        options.inplace = options.files.len() > 1;
+        options.inplace |= options.files.len() > 1;
         let files = options.files.clone();
         for file in files {
             if options.inplace {
