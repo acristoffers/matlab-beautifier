@@ -9,15 +9,14 @@ use std::env;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 
-include!("src/args.rs");
+include!("../lib/src/args.rs");
 
 fn get_output_path() -> PathBuf {
     //<root or manifest path>/target/<profile>/
-    let manifest_dir_string = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let out_dir = env::var("OUT_DIR").unwrap();
     let build_type = env::var("PROFILE").unwrap();
-    Path::new(&manifest_dir_string)
-        .join("target")
-        .join(build_type)
+    let target = out_dir.split_at(out_dir.find(("target/".to_string() + &build_type).as_str()).unwrap()).0;
+    Path::new(&target).join("target").join(build_type)
 }
 
 fn main() -> Result<(), Error> {
@@ -73,15 +72,30 @@ fn main() -> Result<(), Error> {
     let man_path = man_path.join("matlab-beautifier.1");
     let mut buffer: Vec<u8> = Default::default();
     man.render(&mut buffer)?;
-    std::fs::write(man_path.clone(), buffer)?;
+    std::fs::write(man_path, buffer)?;
 
     let share = std::path::PathBuf::from(&release_dir).join("share");
+
+    let copy_options = fs_extra::dir::CopyOptions {
+        overwrite: true,
+        skip_exist: false,
+        buffer_size: 64000,
+        copy_inside: false,
+        content_only: false,
+        depth: 0,
+    };
+
+    println!(
+        "Copying from {:?} into {:?}",
+        std::path::PathBuf::from(&outdir).join("share"),
+        std::path::PathBuf::from(&release_dir)
+    );
 
     fs_extra::remove_items(&[&share]).unwrap();
     fs_extra::copy_items(
         &[std::path::PathBuf::from(&outdir).join("share")],
         std::path::PathBuf::from(&release_dir),
-        &fs_extra::dir::CopyOptions::new(),
+        &copy_options,
     )
     .unwrap();
 

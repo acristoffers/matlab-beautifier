@@ -12,6 +12,7 @@
         naersk' = pkgs.callPackage naersk { };
         buildInputs = with pkgs; [ ];
         mkPackage = { name, buildInputs ? [ ] }: naersk'.buildPackage {
+          cargoBuildOptions = opts: opts ++ [ "--package" name ];
           inherit buildInputs;
           inherit name;
           inherit version;

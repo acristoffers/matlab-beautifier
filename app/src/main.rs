@@ -4,14 +4,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-mod args;
-mod beautifier;
-
 use anyhow::Result;
-use args::{Arguments, Parser};
 use colored::*;
 
-use self::beautifier::beautify;
+use matlab_beautifier::{Arguments, Parser};
+use matlab_beautifier::beautify;
 
 fn main() {
     let mut options = Arguments::parse();
