@@ -609,13 +609,13 @@ fn format_row(state: &mut State, node: Node) -> Result<()> {
         }
         let col_start = state.col;
         if let Some(cell_size) = &cell_size {
-            let negative = child.utf8_text(state.code)?.starts_with('-');
+            let negative = child.utf8_text(state.code)?.trim().starts_with('-');
             if i < cell_size.len() && cell_size[i].1 && !negative {
                 state.print(" ");
             }
             format_node(state, *child)?;
             if !child.is_extra() && i < cell_size.len() && j != children.len() - 1 {
-                let padding = cell_size[i].0 + col_start - state.col;
+                let padding = (cell_size[i].0 + col_start).saturating_sub(state.col);
                 state.print(" ".repeat(padding).as_str());
             }
         } else {
@@ -645,6 +645,7 @@ fn calculate_column_sizes(state: &mut State, node: Node) -> Result<()> {
     state.formatted.clear();
     state.col = 0;
     let mut cell_size = vec![(0usize, false)];
+    let mut cell_text = vec![(String::new(), false)];
     for row in node.named_children(&mut cursor).filter(|c| !c.is_extra()) {
         let mut cursor2 = row.walk();
         let mut i = 0;
@@ -654,17 +655,30 @@ fn calculate_column_sizes(state: &mut State, node: Node) -> Result<()> {
                 continue;
             }
             format_node(state, cell)?;
-            if cell_size.len() > i {
-                let c = cell_size[i].0.max(state.col);
-                let b = cell_size[i].1 || state.formatted.starts_with('-');
-                cell_size[i] = (c, b);
+            if cell_text.len() > i {
+                if cell_text[i].0.len() < state.col
+                    || (cell_text[i].0.len() == state.col && !state.formatted.starts_with('-'))
+                {
+                    cell_text[i] = (
+                        state.formatted.trim().to_string(),
+                        cell_text[i].1 || state.formatted.trim().starts_with('-'),
+                    );
+                }
+                if state.formatted.starts_with('-') {
+                    cell_text[i].1 = true;
+                }
             } else {
-                cell_size.push((state.col, state.formatted.starts_with('-')));
+                cell_text.push((state.formatted.clone(), state.formatted.starts_with('-')));
             }
             state.formatted.clear();
             state.col = 0;
             i += 1;
         }
+    }
+    cell_size.clear();
+    for (cell, neg) in cell_text {
+        let minus_offset = if cell.starts_with('-') { 0 } else { 1 };
+        cell_size.push((cell.len() + minus_offset, neg));
     }
     state.formatted = saved_formatted;
     state.arguments.inplace = saved_inplace;
