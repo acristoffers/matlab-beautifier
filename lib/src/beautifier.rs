@@ -16,7 +16,7 @@ struct State<'a> {
     row: usize,
     level: usize,
     extra_indentation: usize,
-    cell_size: Option<Vec<usize>>,
+    cell_size: Option<Vec<(usize, bool)>>,
 }
 
 impl State<'_> {
@@ -602,16 +602,24 @@ fn format_row(state: &mut State, node: Node) -> Result<()> {
     let mut first = true;
     let mut i: usize = 0;
     let children: Vec<Node> = node.named_children(&mut cursor).collect();
+    let cell_size = state.cell_size.clone();
     for (j, child) in children.iter().enumerate() {
         if !first && !child.is_extra() {
             state.print(" ");
         }
         let col_start = state.col;
-        format_node(state, *child)?;
-        if let Some(cell_size) = &state.cell_size {
-            if !child.is_extra() && i < cell_size.len() && j != children.len() - 1 {
-                state.print(" ".repeat(cell_size[i] + col_start - state.col).as_str());
+        if let Some(cell_size) = &cell_size {
+            let negative = child.utf8_text(state.code)?.starts_with('-');
+            if i < cell_size.len() && cell_size[i].1 && !negative {
+                state.print(" ");
             }
+            format_node(state, *child)?;
+            if !child.is_extra() && i < cell_size.len() && j != children.len() - 1 {
+                let padding = cell_size[i].0 + col_start - state.col;
+                state.print(" ".repeat(padding).as_str());
+            }
+        } else {
+            format_node(state, *child)?;
         }
         first = child.is_extra();
         if child.is_extra() {
@@ -636,7 +644,7 @@ fn calculate_column_sizes(state: &mut State, node: Node) -> Result<()> {
     state.arguments.inplace = true;
     state.formatted.clear();
     state.col = 0;
-    let mut cell_size = vec![0usize];
+    let mut cell_size = vec![(0usize, false)];
     for row in node.named_children(&mut cursor).filter(|c| !c.is_extra()) {
         let mut cursor2 = row.walk();
         let mut i = 0;
@@ -647,16 +655,17 @@ fn calculate_column_sizes(state: &mut State, node: Node) -> Result<()> {
             }
             format_node(state, cell)?;
             if cell_size.len() > i {
-                cell_size[i] = cell_size[i].max(state.col);
+                let c = cell_size[i].0.max(state.col);
+                let b = cell_size[i].1 || state.formatted.starts_with('-');
+                cell_size[i] = (c, b);
             } else {
-                cell_size.push(state.col);
+                cell_size.push((state.col, state.formatted.starts_with('-')));
             }
             state.formatted.clear();
             state.col = 0;
             i += 1;
         }
     }
-    cell_size.pop();
     state.formatted = saved_formatted;
     state.arguments.inplace = saved_inplace;
     state.row = saved_row;
