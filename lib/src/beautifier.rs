@@ -206,7 +206,9 @@ fn format_block(state: &mut State, node: Node) -> Result<()> {
         }
         if let Some(previous) = previous {
             // There are some empty lines between nodes. Preserve one of them.
-            if child.range().start_point.row - previous.range().end_point.row > 1 {
+            if child.range().start_point.row - previous.range().end_point.row > 1
+                || child.kind() == "function_definition"
+            {
                 state.println("");
             }
             // Only assignments and comments are allowed on the same line.
