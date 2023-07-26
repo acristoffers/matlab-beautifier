@@ -99,7 +99,7 @@ pub fn beautify(code: &str, arguments: &mut Arguments) -> Result<String> {
         row: 0,
         level: 0,
         extra_indentation: 0,
-        formatted: "".into(),
+        formatted: String::with_capacity(code.len() * 2),
         cell_size: None,
     };
 
