@@ -27,6 +27,10 @@
         formatter = nixpkgs.legacyPackages.${system}.nixpkgs-fmt;
         packages.matlab-beautifier = mkPackage { name = "matlab-beautifier"; };
         packages.default = packages.matlab-beautifier;
+        apps = rec {
+          matlab-beautifier = { type = "app"; program = "${packages.default}/bin/matlab-beautifier"; };
+          default = matlab-beautifier;
+        };
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [ rustc cargo ];
           inherit buildInputs;
