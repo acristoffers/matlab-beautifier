@@ -5,16 +5,16 @@ edition = "2021"
 
 [dependencies]
 matlab_beautifier = { path = "../lib" }
-anyhow = "1.0.75"
+anyhow = "1.0.81"
 chardetng = "0.1.17"
-clap = { version = "4.3.23", features = ["derive", "env"] }
-colored = "2.0.4"
-encoding_rs = "0.8.32"
+clap = { version = "4.5.3", features = ["derive", "env"] }
+colored = "2.1.0"
+encoding_rs = "0.8.33"
 
 [build-dependencies]
-clap = { version = "4.3.23", features = ["derive", "env"] }
-clap_complete = "4.3.2"
-clap_mangen = "0.2.12"
+clap = { version = "4.5.3", features = ["derive", "env"] }
+clap_complete = "4.5.1"
+clap_mangen = "0.2.20"
 fs_extra = "1.3.0"
 
 [[bin]]
