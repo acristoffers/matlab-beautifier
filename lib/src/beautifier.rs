@@ -80,7 +80,7 @@ impl<T> TraversingError<T> for Option<T> {
 pub fn beautify(code: &str, arguments: &mut Arguments) -> Result<String> {
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(tree_sitter_matlab::language())
+        .set_language(&tree_sitter_matlab::language())
         .with_context(|| "Could not set Tree-Sitter language")?;
 
     let tree = parser
@@ -149,7 +149,7 @@ fn format_node(state: &mut State, node: Node) -> Result<()> {
 }
 
 fn format_block(state: &mut State, node: Node) -> Result<()> {
-    let statements = vec![
+    let statements = [
         "arguments_statement",
         "class_definition",
         "comment",
@@ -162,8 +162,8 @@ fn format_block(state: &mut State, node: Node) -> Result<()> {
     ];
     let mut cursor = node.walk();
     let original_indentation = state.level;
-    let indents = vec!["cvx_begin", "subject"];
-    let dedents = vec!["cvx_end"];
+    let indents = ["cvx_begin", "subject"];
+    let dedents = ["cvx_end"];
     state.extra_indentation = 0;
     state.indent();
     let mut named_children: Vec<Node> = node.named_children(&mut cursor).collect();
@@ -344,7 +344,7 @@ fn format_assignment(state: &mut State, node: Node) -> Result<()> {
 
 fn format_binary(state: &mut State, node: Node) -> Result<()> {
     state.maybe_set_extra_indentation(state.col - 4 * state.level);
-    let add_ops = vec!["+", "-", ".+", ".-"];
+    let add_ops = ["+", "-", ".+", ".-"];
     let mut line_cont = false;
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -1013,6 +1013,52 @@ fn format_arguments_statement(state: &mut State, node: Node) -> Result<()> {
 }
 
 fn format_property(state: &mut State, node: Node) -> Result<()> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "@" {
+            return format_property_old(state, node);
+        }
+    }
+    format_property_new(state, node)
+}
+
+fn format_property_old(state: &mut State, node: Node) -> Result<()> {
+    let mut cursor = node.walk();
+    let name = node.child_by_field_name("name").err_at_loc(&node)?;
+    let class = node
+        .children(&mut cursor)
+        .filter(|c| c.id() != name.id())
+        .find(|c| c.kind() == "identifier")
+        .err_at_loc(&node)?;
+    let kind = node
+        .children(&mut cursor)
+        .filter(|c| c.id() != name.id() && c.id() != class.id())
+        .find(|c| c.kind() == "identifier");
+    let default_value = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "default_value");
+    if name.kind() == "identifier" {
+        state.print_node(name)?;
+    } else {
+        format_property_name(state, name)?;
+    }
+    state.print("@");
+    format_node(state, class)?;
+    if let Some(kind) = kind {
+        state.print(" ");
+        format_node(state, kind)?;
+    }
+    if let Some(default_value) = default_value {
+        state.print(" = ");
+        format_node(
+            state,
+            default_value.named_child(0).err_at_loc(&default_value)?,
+        )?;
+    }
+    Ok(())
+}
+
+fn format_property_new(state: &mut State, node: Node) -> Result<()> {
     let mut cursor = node.walk();
     let name = node.child_by_field_name("name").err_at_loc(&node)?;
     let dimensions = node
