@@ -1,28 +1,29 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-
     flake-utils.url = "github:numtide/flake-utils";
-
-    naersk.url = "github:nix-community/naersk";
-    naersk.inputs.nixpkgs.follows = "nixpkgs";
   };
-  outputs = { self, flake-utils, naersk, nixpkgs }:
+  outputs = { self, flake-utils, nixpkgs }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         version = "1.0.0";
         pkgs = (import nixpkgs) { inherit system; };
-        naersk' = pkgs.callPackage naersk { };
+        nativeBuildInputs = with pkgs; [ cmake pkg-config rustc cargo ];
         buildInputs = [ ];
-        mkPackage = { name, buildInputs ? [ ] }: naersk'.buildPackage {
-          cargoBuildOptions = opts: opts ++ [ "--package" name ];
-          inherit buildInputs;
-          inherit name;
+        mkPackage = { name, buildInputs ? [ ] }: pkgs.rustPlatform.buildRustPackage {
+          pname = name;
           inherit version;
-          nativeBuildInputs = with pkgs; [ cmake pkg-config ];
+          inherit buildInputs;
+          inherit nativeBuildInputs;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            outputHashes = {
+              "tree-sitter-matlab-1.0.2" = "sha256-hueZg7hoZb11+ukrZgK1+da0w9J22jsj1BexlF4USXY=";
+            };
+          };
           src = ./.;
           postInstall = "
-            cp -r target/release/share $out/share
+            cp -r target/*/release/share $out/share
           ";
         };
       in
@@ -35,7 +36,7 @@
           default = matlab-beautifier;
         };
         devShell = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [ rustc cargo ];
+          inherit nativeBuildInputs;
           inherit buildInputs;
         };
       }
