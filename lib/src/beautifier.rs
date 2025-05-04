@@ -80,7 +80,7 @@ impl<T> TraversingError<T> for Option<T> {
 pub fn beautify(code: &str, arguments: &mut Arguments) -> Result<String> {
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&tree_sitter_matlab::language())
+        .set_language(&tree_sitter_matlab::LANGUAGE.into())
         .with_context(|| "Could not set Tree-Sitter language")?;
 
     let tree = parser

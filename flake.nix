@@ -18,7 +18,7 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-              "tree-sitter-matlab-1.0.2" = "sha256-hueZg7hoZb11+ukrZgK1+da0w9J22jsj1BexlF4USXY=";
+              "tree-sitter-matlab-1.0.5" = "sha256-iiELNwO4m0lr2Bcowu5zj0VdA2Eg2i5N58MwC7HiGbs=";
             };
           };
           src = ./.;
@@ -36,7 +36,7 @@
           default = matlab-beautifier;
         };
         devShell = pkgs.mkShell {
-          inherit nativeBuildInputs;
+          nativeBuildInputs = nativeBuildInputs ++ (with pkgs; [ busybox ]);
           inherit buildInputs;
         };
       }
