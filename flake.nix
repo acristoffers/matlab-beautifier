@@ -18,7 +18,7 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-              "tree-sitter-matlab-1.0.6" = "sha256-5SblRAJXzJSEXxiUFnM9vNiJV18sT5dt/NrOHPAix1c=";
+              "tree-sitter-matlab-1.0.7" = "sha256-7I6ihIWBx8PqULbPzlrlI4BkrnEf7geT5xx08WjWQWg=";
             };
           };
           src = ./.;
