@@ -4,8 +4,8 @@ version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.98"
-clap = { version = "4.5.41", features = ["derive", "env"] }
+anyhow = "1.0.100"
+clap = { version = "4.5.51", features = ["derive", "env"] }
 tree-sitter = ">=0.21.0"
 tree-sitter-matlab = { git = "https://github.com/acristoffers/tree-sitter-matlab" }
 
