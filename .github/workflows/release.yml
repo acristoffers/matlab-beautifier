@@ -1,0 +1,80 @@
+name: Release Rust Binaries
+
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: matlab-beautifier-linux-amd64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact: matlab-beautifier-linux-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: matlab-beautifier-darwin-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: matlab-beautifier-darwin-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux)
+        if: runner.os == 'Linux'
+        run: cargo install cross --locked
+
+      - name: Build binary (Linux)
+        if: runner.os == 'Linux'
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build binary (macOS)
+        if: runner.os == 'macOS'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Collect artifact
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/matlab-beautifier dist/${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.repository == 'acristoffers/matlab-beautifier' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: matlab-beautifier-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
