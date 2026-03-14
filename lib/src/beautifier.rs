@@ -140,6 +140,7 @@ fn format_node(state: &mut State, node: Node) -> Result<()> {
         "property_name" => format_property_name(state, node),
         "range" => format_range(state, node),
         "row" => format_row(state, node),
+        "spmd_statement" => format_spmd(state, node),
         "switch_statement" => format_switch(state, node),
         "try_statement" => format_try(state, node),
         "unary_operator" => format_unary(state, node),
@@ -156,6 +157,7 @@ fn format_block(state: &mut State, node: Node) -> Result<()> {
         "for_statement",
         "function_definition",
         "if_statement",
+        "spmd_statement",
         "switch_statement",
         "try_statement",
         "while_statement",
@@ -992,7 +994,7 @@ fn format_arguments_statement(state: &mut State, node: Node) -> Result<()> {
         .find(|c| c.kind() == "attributes");
     let properties = node
         .children(&mut cursor)
-        .filter(|c| c.kind() == "property");
+        .filter(|c| c.kind() == "property" || c.kind() == "class_property");
     state.print("arguments");
     if let Some(attributes) = attributes {
         state.print(" (");
@@ -1003,8 +1005,40 @@ fn format_arguments_statement(state: &mut State, node: Node) -> Result<()> {
     state.level += 1;
     for property in properties {
         state.indent();
-        format_property(state, property)?;
+        format_node(state, property)?;
         state.println("");
+    }
+    state.level -= 1;
+    state.indent();
+    state.print("end");
+    Ok(())
+}
+
+fn format_spmd(state: &mut State, node: Node) -> Result<()> {
+    let mut cursor = node.walk();
+    let block = node.children(&mut cursor).find(|c| c.kind() == "block");
+    let worker_exprs: Vec<Node> = node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() != "block")
+        .collect();
+    state.print("spmd");
+    if !worker_exprs.is_empty() {
+        state.print("(");
+        for (i, expr) in worker_exprs.iter().enumerate() {
+            if i != 0 {
+                state.print(", ");
+            }
+            format_node(state, *expr)?;
+        }
+        state.print(")");
+    }
+    print_linter_comment(state, node)?;
+    state.println("");
+    state.level += 1;
+    if let Some(block) = block {
+        format_block(state, block)?;
+    } else {
+        print_non_linter_comments(state, node)?;
     }
     state.level -= 1;
     state.indent();
