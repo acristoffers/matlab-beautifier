@@ -2,6 +2,9 @@
 name = "matlab-beautifier"
 version = "1.0.2"
 edition = "2021"
+license = "MPL-2.0"
+authors = ["Álan Crístoffer <alan@esousa.me>"]
+description = "A MATLAB source beautifier"
 
 [dependencies]
 matlab_beautifier = { path = "../lib" }
@@ -20,3 +23,24 @@ fs_extra = "1.3.0"
 [[bin]]
 name = "matlab-beautifier"
 path = "src/main.rs"
+
+[package.metadata.deb]
+section = "utils"
+depends = "$auto"
+extended-description = "A beautifier for ledger files"
+assets = [
+    ["target/release/matlab-beautifier", "usr/bin/", "755"],
+    ["target/release/share/man/man1/matlab-beautifier.1", "usr/share/man/man1/", "644"],
+    ["target/release/share/bash/completions/matlab-beautifier.bash", "usr/share/bash-completion/completions/matlab-beautifier", "644"],
+    ["target/release/share/fish/completions/matlab-beautifier.fish", "usr/share/fish/vendor_completions.d/", "644"],
+    ["target/release/share/zsh/completions/_matlab-beautifier", "usr/share/zsh/vendor-completions/", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/matlab-beautifier", dest = "/usr/bin/matlab-beautifier", mode = "755" },
+    { source = "target/release/share/man/man1/matlab-beautifier.1", dest = "/usr/share/man/man1/matlab-beautifier.1", mode = "644", doc = true },
+    { source = "target/release/share/bash/completions/matlab-beautifier.bash", dest = "/usr/share/bash-completion/completions/matlab-beautifier", mode = "644" },
+    { source = "target/release/share/fish/completions/matlab-beautifier.fish", dest = "/usr/share/fish/vendor_completions.d/matlab-beautifier.fish", mode = "644" },
+    { source = "target/release/share/zsh/completions/_matlab-beautifier", dest = "/usr/share/zsh/site-functions/_matlab-beautifier", mode = "644" },
+]
