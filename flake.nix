@@ -6,7 +6,7 @@
   outputs = { self, flake-utils, nixpkgs }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        version = "1.0.4";
+        version = "1.0.5";
         pkgs = (import nixpkgs) { inherit system; };
         nativeBuildInputs = with pkgs; [ cmake pkg-config rustc cargo ];
         buildInputs = [ ];
